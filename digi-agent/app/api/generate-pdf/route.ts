@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return new Response(blob, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="plan-implementacion-${userInfo.empresa}.pdf"`,
+        "Content-Disposition": `attachment; filename="plan-implementacion-${userInfo.company}.pdf"`,
       },
     });
   } catch (error) {
@@ -46,8 +46,8 @@ function generatePDFContent(plan: ImplementationPlan, userInfo: UserInfo): strin
 PLAN DE IMPLEMENTACIÓN HUBSPOT
 ${"=".repeat(50)}
 
-Empresa: ${plan.empresa}
-Contacto: ${userInfo.nombre} ${userInfo.apellido}
+Empresa: ${plan.company}
+Contacto: ${userInfo.name} ${userInfo.lastName}
 Email: ${userInfo.email}
 Website: ${userInfo.website}
 
@@ -57,16 +57,16 @@ ${"=".repeat(50)}
 
 OBJETIVOS
 ${"-".repeat(50)}
-${plan.objetivos.map((obj, idx) => `${idx + 1}. ${obj}`).join("\n")}
+${plan.objectives.map((obj, idx) => `${idx + 1}. ${obj}`).join("\n")}
 
 ${"=".repeat(50)}
 
 MÓDULOS RECOMENDADOS
 ${"-".repeat(50)}
-${plan.modulos
+${plan.modules
   .map(
     (mod, idx) =>
-      `${idx + 1}. ${mod.nombre} (Prioridad: ${mod.prioridad})\n   ${mod.descripcion}`
+      `${idx + 1}. ${mod.name} (Prioridad: ${mod.priority})\n   ${mod.description}`
   )
   .join("\n\n")}
 
@@ -80,7 +80,7 @@ ${"=".repeat(50)}
 
 RECOMENDACIONES
 ${"-".repeat(50)}
-${plan.recomendaciones.map((rec, idx) => `${idx + 1}. ${rec}`).join("\n")}
+${plan.recommendations.map((rec, idx) => `${idx + 1}. ${rec}`).join("\n")}
 
 ${"=".repeat(50)}
 
