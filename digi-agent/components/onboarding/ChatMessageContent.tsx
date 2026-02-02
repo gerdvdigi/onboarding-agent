@@ -104,6 +104,18 @@ function normalizeMarkdown(content: string): string {
   // Ensure space after bold labels: "**Where:**Settings" -> "**Where:** Settings"
   normalized = normalized.replace(/(\*\*[^*]+:\*\*)([A-Za-z])/g, "$1 $2");
 
+  // Fix bold label glued to bullet: "**Objectives:**- Organize" -> "**Objectives:**\n\n- Organize"
+  normalized = normalized.replace(/(\*\*[^*]+:\*\*)- ([A-Za-z])/g, "$1\n\n- $2");
+
+  // Fix "Makers- Qualifier", "Automation- Triggered" (with or without ** before -)
+  normalized = normalized.replace(
+    /(Makers|Automation|Sequence|Segmentation)\*{0,2}(-\s+)(Qualifier|Triggered|For|Score|Create)/g,
+    "$1\n\n$2$3"
+  );
+  normalized = normalized.replace(/(Helpful Articles)(:\s*-\s*)([A-Za-z])/g, "$1:\n\n- $3");
+  // Fix "Helpful Article:" or "Helpful Articles:" glued to content (no space)
+  normalized = normalized.replace(/(Helpful Article[s]?):([A-Za-z\[\]])/g, "$1: $2");
+
   // ═══════════════════════════════════════════════════════════════
   // 5. FIX NUMBERS GLUED TO TEXT
   // ═══════════════════════════════════════════════════════════════
