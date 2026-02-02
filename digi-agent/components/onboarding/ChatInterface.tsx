@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
 import type { ImplementationPlan } from "@/lib/langchain/agent";
-import { API_ENDPOINTS } from "@/lib/config/api";
+
 import { deriveContextFromMessages } from "@/lib/utils/derive-context-from-messages";
 import { ChatMessageContent } from "./ChatMessageContent";
 
@@ -112,7 +112,7 @@ export function ChatInterface() {
     finalStreamingContentRef.current = "";
 
     try {
-      const response = await fetch(API_ENDPOINTS.chat, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
