@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
 import { Download, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { API_ENDPOINTS } from "@/lib/config/api";
 
 export function FinalizationStep() {
   const { approvedPlan, approvedPlanFullText, userInfo } = useOnboardingStore();
@@ -19,7 +18,7 @@ export function FinalizationStep() {
   const generatePDF = async () => {
     if (!approvedPlan || !userInfo) return;
     try {
-      const response = await fetch(API_ENDPOINTS.generatePdf, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/generate-pdf`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
