@@ -28,12 +28,10 @@ export class ChatController {
         );
       }
 
-      // Configurar headers para SSE
+      // Configurar headers para SSE (CORS lo maneja main.ts; no sobrescribir Access-Control-Allow-Origin)
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
       const encoder = new TextEncoder();
 

@@ -5,9 +5,17 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Habilitar CORS para permitir conexiones desde el frontend
+  // CORS: allow deployed frontend + localhost. Set FRONTEND_URL for production (comma-separated for multiple).
+  const allowedOrigins = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map((s) => s.trim()).filter(Boolean)
+    : ['http://localhost:3000', 'https://localhost:3000'];
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const allowed = allowedOrigins.some((o) => origin === o || (o.startsWith('.') && origin.endsWith(o)));
+      callback(null, allowed ? origin : false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
