@@ -53,113 +53,45 @@ function parseSubscriptionLevel(raw: string): string {
   return found ? found.charAt(0).toUpperCase() + found.slice(1) : 'Professional';
 }
 
-function recommendModules(answers: any) {
-  const activeHubs = parseActiveHubs(answers.hubs_included || '');
-  const level = parseSubscriptionLevel(answers.subscription_levels);
-  const modules: any[] = [];
-
-  modules.push({
-    name: 'HubSpot Framework & Data Architecture',
-    description: 'Core configuration of custom properties, object associations, and security settings.',
-    priority: 'high',
-  });
-
-  if (activeHubs.sales) {
-    modules.push({
-      name: 'Sales Automation & Pipeline Setup',
-      description: `Designing custom deal stages, automated task creation, and sales sequences for ${level} users.`,
-      priority: 'high',
-    });
-  }
-
-  if (activeHubs.marketing) {
-    modules.push({
-      name: 'Inbound Marketing & Lead Nurturing',
-      description: 'Advanced lead scoring, automated email workflows, and marketing asset branding.',
-      priority: 'high',
-    });
-  }
-
-  if (activeHubs.service) {
-    modules.push({
-      name: 'Service Excellence & Ticketing',
-      description: 'Customer portal setup, automated ticket routing, and feedback survey implementation.',
-      priority: 'medium',
-    });
-  }
-
-  return modules;
+function recommendModules(_answers: any): any[] {
+  return [];
 }
 
-function extractObjectives(answers: any): string[] {
-  const goalsText = String(answers.overall_goals || answers.business_goals || '').toLowerCase();
+function extractObjectives(answers: Record<string, unknown>): string[] {
   const objectives: string[] = [];
+  const overall = String(answers.overall_goals || '').trim();
+  const hubSpecific = String(answers.hub_specific_details || '').trim();
 
-  const objectivePatterns: Array<{ pattern: RegExp | string; objective: string }> = [
-    { pattern: /organiz(e|ing)\s*(the\s*)?(sales|process)/i, objective: 'Organize and standardize the sales process end-to-end' },
-    { pattern: /reduce\s*manual/i, objective: 'Reduce manual work through automation' },
-    { pattern: /no\s*(lead|leads?)\s*(slip|fall|miss)/i, objective: 'Ensure no leads slip through the cracks' },
-    { pattern: /lead\s*qualif/i, objective: 'Improve lead qualification and scoring' },
-    { pattern: /faster\s*follow/i, objective: 'Enable faster follow-up with leads and deals' },
-    { pattern: /pipeline\s*visib/i, objective: 'Achieve clear pipeline visibility' },
-    { pattern: /report/i, objective: 'Implement reliable reporting and dashboards' },
-    { pattern: /marketing.*feeds?\s*sales/i, objective: 'Align marketing to feed sales with qualified opportunities' },
-    { pattern: /automat/i, objective: 'Automate repetitive tasks and workflows' },
-    { pattern: /track.*source|source.*track|roi/i, objective: 'Track lead sources and measure ROI by channel' },
-    { pattern: /nurtur/i, objective: 'Set up lead nurturing sequences' },
-    { pattern: /scal(e|ing)/i, objective: 'Scale operations without adding headcount' },
-  ];
+  if (overall) {
+    // Split by common separators: comma, semicolon, "and", newlines
+    const parts = overall
+      .split(/[,;]|\s+and\s+|\n+/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 3 && s.length < 200);
+    objectives.push(...parts);
+  }
 
-  for (const { pattern, objective } of objectivePatterns) {
-    const regex = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
-    if (regex.test(goalsText) && !objectives.includes(objective)) {
-      objectives.push(objective);
+  if (hubSpecific) {
+    const parts = hubSpecific
+      .split(/\||[,;]|\s+and\s+|\n+/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 3 && s.length < 200);
+    for (const p of parts) {
+      if (p && !objectives.some((o) => o.toLowerCase() === p.toLowerCase())) {
+        objectives.push(p);
+      }
     }
   }
 
-  if (objectives.length === 0) {
-    const activeHubs = parseActiveHubs(answers.hubs_included || '');
-    if (activeHubs.sales) objectives.push('Optimize sales operations with HubSpot');
-    if (activeHubs.marketing) objectives.push('Streamline marketing automation and lead generation');
-    if (activeHubs.service) objectives.push('Improve customer service efficiency');
-    if (objectives.length === 0) {
-      objectives.push('Optimize business operations through HubSpot automation');
-    }
-  }
-
-  return objectives.slice(0, 5);
+  return objectives.slice(0, 12);
 }
 
-function estimateTimeline(modules: any[]): string {
-  const highPriorityItems = modules.filter(m => m.priority === 'high').length;
-  const estimatedWeeks = 2 + highPriorityItems;
-  return `${estimatedWeeks} weeks`;
+function estimateTimeline(_modules: any[]): string {
+  return '';
 }
 
-function generateRecommendations(answers: any): string[] {
-  const recommendations: string[] = [
-    'Define clear naming conventions for all technical assets.',
-    'Integrate primary calendars and email inboxes for data tracking.',
-  ];
-
-  const activeHubs = parseActiveHubs(answers.hubs_included || '');
-
-  if (activeHubs.sales) {
-    recommendations.push('Set up deal pipelines before importing historical data.');
-    recommendations.push('Configure lead assignment rules based on territory or round-robin.');
-  }
-
-  if (activeHubs.marketing) {
-    recommendations.push('Install tracking code on all website pages before launching campaigns.');
-    recommendations.push('Define lifecycle stages and lead scoring criteria early.');
-  }
-
-  if (activeHubs.service) {
-    recommendations.push('Map ticket statuses to your actual support workflow.');
-    recommendations.push('Set up SLA automation for response time tracking.');
-  }
-
-  return recommendations;
+function generateRecommendations(_answers: any): string[] {
+  return [];
 }
 
 // ═══════════════════════════════════════════════════════════════

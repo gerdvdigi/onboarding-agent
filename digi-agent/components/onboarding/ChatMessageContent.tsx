@@ -114,7 +114,8 @@ function normalizeMarkdown(content: string): string {
   );
   normalized = normalized.replace(/(Helpful Articles)(:\s*-\s*)([A-Za-z])/g, "$1:\n\n- $3");
   // Fix "Helpful Article:" or "Helpful Articles:" glued to content (no space)
-  normalized = normalized.replace(/(Helpful Article[s]?):([A-Za-z\[\]])/g, "$1: $2");
+  normalized = normalized.replace(/(Helpful Article[s]?):([A-Za-z\[\-])/g, "$1: $2");
+  normalized = normalized.replace(/(Helpful Articles?):-/g, "$1: ");
 
   // ═══════════════════════════════════════════════════════════════
   // 5. FIX NUMBERS GLUED TO TEXT

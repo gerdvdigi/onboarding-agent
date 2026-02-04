@@ -5,6 +5,7 @@ import { Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
+import { getApiBaseUrl } from "@/lib/config/api";
 import type { ImplementationPlan } from "@/lib/langchain/agent";
 
 import { deriveContextFromMessages } from "@/lib/utils/derive-context-from-messages";
@@ -112,7 +113,7 @@ export function ChatInterface() {
     finalStreamingContentRef.current = "";
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
+      const response = await fetch(`${getApiBaseUrl()}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -282,8 +283,13 @@ export function ChatInterface() {
   const handleApprovePlan = () => {
     if (planDraft) {
       const messages = useOnboardingStore.getState().messages;
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-      const fullPlanText = lastAssistant?.content ?? null;
+      // Find the assistant message that contains the actual plan (has hub sections or plan structure)
+      const planMarkers = /##\s+(SALES|MARKETING|SERVICE)\s+HUB|#\s+.+\s+Implementation\s+Plan/i;
+      const assistantMessages = [...messages].filter((m) => m.role === "assistant");
+      const planMessage = [...assistantMessages].reverse().find(
+        (m) => m.content && planMarkers.test(m.content)
+      );
+      const fullPlanText = (planMessage?.content ?? assistantMessages.at(-1)?.content ?? "").trim() || null;
       useOnboardingStore.getState().setApprovedPlan(planDraft, fullPlanText);
       useOnboardingStore.getState().setCurrentStep(3);
       window.location.href = "/onboarding/step-3";

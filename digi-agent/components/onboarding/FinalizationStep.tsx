@@ -2,12 +2,15 @@
 
 import { Button } from "@/components/ui/button";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
+import { getApiBaseUrl } from "@/lib/config/api";
 import { Download, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function FinalizationStep() {
   const { approvedPlan, approvedPlanFullText, userInfo } = useOnboardingStore();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
 
   useEffect(() => {
     if (approvedPlan) {
@@ -17,8 +20,10 @@ export function FinalizationStep() {
 
   const generatePDF = async () => {
     if (!approvedPlan || !userInfo) return;
+    setPdfError(null);
+    setIsLoadingPdf(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/generate-pdf`, {
+      const response = await fetch(`${getApiBaseUrl()}/generate-pdf`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -31,7 +36,15 @@ export function FinalizationStep() {
       });
 
       if (!response.ok) {
-        throw new Error("Error generating PDF");
+        const errBody = await response.text();
+        let errMsg = "Error generating PDF";
+        try {
+          const parsed = JSON.parse(errBody);
+          errMsg = parsed.message || parsed.error || errMsg;
+        } catch {
+          if (errBody) errMsg = errBody.slice(0, 200);
+        }
+        throw new Error(errMsg);
       }
 
       const blob = await response.blob();
@@ -39,6 +52,11 @@ export function FinalizationStep() {
       setPdfUrl(url);
     } catch (error) {
       console.error("Error generating PDF:", error);
+      setPdfError(
+        error instanceof Error ? error.message : "Could not generate PDF. Please try again."
+      );
+    } finally {
+      setIsLoadingPdf(false);
     }
   };
 
@@ -71,7 +89,32 @@ export function FinalizationStep() {
         </p>
       </div>
 
-      {pdfUrl && (
+      {pdfError && (
+        <div className="border border-destructive/50 rounded-lg p-4 bg-destructive/5">
+          <p className="text-destructive font-medium">{pdfError}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            If the plan content is missing, go back to the chat and approve the plan again.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-3"
+            onClick={() => {
+              setPdfError(null);
+              generatePDF();
+            }}
+          >
+            Retry PDF
+          </Button>
+        </div>
+      )}
+
+      {isLoadingPdf && !pdfUrl && (
+        <div className="border rounded-lg p-8 text-center text-muted-foreground">
+          Generating PDF...
+        </div>
+      )}
+
+      {pdfUrl && !pdfError && (
         <div className="border rounded-lg p-4 space-y-4">
           <div className="flex justify-between items-center">
             <div>
