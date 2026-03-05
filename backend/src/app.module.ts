@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { MailModule } from './mail/mail.module';
 import { OnboardingSessionModule } from './onboarding-session/onboarding-session.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     MailModule,
     OnboardingSessionModule,
     OnboardingModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -24,6 +24,7 @@ import { ConversationRepository } from '../onboarding-session/conversation.repos
 import { ChatMessageRepository } from './chat-message.repository';
 import { HubSpotService } from '../hubspot/hubspot.service';
 import { formatNotePdfDownloaded } from '../hubspot/hubspot-note-format';
+import { StorageService } from '../storage/storage.service';
 
 const PDF_FONTS = {
   Roboto: {
@@ -49,6 +50,7 @@ export class PdfController {
     private readonly sessionService: OnboardingSessionService,
     private readonly conversationRepo: ConversationRepository,
     private readonly chatMessageRepo: ChatMessageRepository,
+    private readonly storageService: StorageService,
   ) {}
 
   @Post()
@@ -73,14 +75,34 @@ export class PdfController {
         fullPlanText,
       );
 
+      const session = getOnboardingSessionFromRequest(req);
+      
+      // Upload PDF to Supabase Storage and save URL to conversation
+      // Sanitize company name for filename (remove special chars, limit length)
+      const sanitizedCompany = (userInfo.company || 'company')
+        .replace(/[^a-zA-Z0-9-]/g, '-')
+        .toLowerCase()
+        .substring(0, 50);
+      const fileName = `implementation-plan-${sanitizedCompany}-${session.id}-${Date.now()}.pdf`;
+      const pdfUrl = await this.storageService.uploadPdf(pdfBuffer, fileName);
+      
+      // Save PDF URL to conversation if conversationId exists
+      if (conversationId && pdfUrl) {
+        const conv = await this.conversationRepo.findByIdAndSession(
+          conversationId,
+          session.id,
+        );
+        if (conv) {
+          await this.conversationRepo.updatePdfUrl(conversationId, pdfUrl);
+        }
+      }
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="implementation-plan-${userInfo.company}.pdf"`,
       );
       res.send(pdfBuffer);
-
-      const session = getOnboardingSessionFromRequest(req);
       await this.sessionService.updateOnboardingStage(
         session.id,
         'pdf_downloaded',
@@ -130,6 +152,7 @@ export class PdfController {
         company,
         website: userInfo.website?.trim() || undefined,
         hubs: hubs || undefined,
+        pdfUrl: pdfUrl || undefined,
         messages,
       });
       const hubspotNoteId = (conv as { hubspotNoteId?: string | null } | null)

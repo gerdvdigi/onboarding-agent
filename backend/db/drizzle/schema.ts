@@ -88,6 +88,8 @@ import {
       hubs: text("hubs"),
       /** Plan snapshot when approved (objectives, modules, etc.). */
       planSnapshot: jsonb("plan_snapshot").$type<Record<string, unknown>>(),
+      /** URL del PDF generado almacenado en Supabase Storage. */
+      pdfUrl: text("pdf_url"),
       createdAt: timestamp("created_at", { withTimezone: true })
         .notNull()
         .defaultNow(),

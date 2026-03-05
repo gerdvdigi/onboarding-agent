@@ -3,14 +3,6 @@
     "supabase": {
       "url": "https://mcp.supabase.com/mcp?project_ref=thamhjwttcirvaoztvms",
       "headers": {}
-    },
-
-    "TestSprite": {
-      "command": "npx @testsprite/testsprite-mcp@latest",
-      "env": {
-        "API_KEY": "sk-user-El56lfLGrZHS9-V9c4VI5DMocETLsEJ5cPQEej7pgwATKD3w81kal8lFdRnJnBDrLPU3XZ6942pov7p3pK7UVTGJfadY22wJ116ic6djsp3k6w3fuPeKxVqSnQavhokDrIs"
-      },
-      "args": []
     }
   }
 }

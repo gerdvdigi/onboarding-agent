@@ -12,6 +12,7 @@ export interface ConversationRow {
   discoveryPercentage?: number | null;
   hubs?: string | null;
   planSnapshot?: Record<string, unknown> | null;
+  pdfUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -117,6 +118,13 @@ export class ConversationRepository {
     await this.db
       .update(onboardingConversations)
       .set({ planSnapshot, updatedAt: new Date() })
+      .where(eq(onboardingConversations.id, conversationId));
+  }
+
+  async updatePdfUrl(conversationId: string, pdfUrl: string): Promise<void> {
+    await this.db
+      .update(onboardingConversations)
+      .set({ pdfUrl, updatedAt: new Date() })
       .where(eq(onboardingConversations.id, conversationId));
   }
 

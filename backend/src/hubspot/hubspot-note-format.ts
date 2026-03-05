@@ -189,9 +189,10 @@ export function formatNotePdfDownloaded(params: {
   company: string;
   website?: string;
   hubs?: string;
+  pdfUrl?: string;
   messages?: Array<{ role: string; content: string }>;
 }): string {
-  const { conversationTitle, company, website, hubs, messages } = params;
+  const { conversationTitle, company, website, hubs, pdfUrl, messages } = params;
   const header = noteHeader(
     conversationTitle,
     'STATUS: PDF Downloaded',
@@ -202,9 +203,13 @@ export function formatNotePdfDownloaded(params: {
     hubs && hubs.trim()
       ? `<p><strong>Hubs:</strong> ${escapeHtml(hubs.trim())}</p>`
       : '';
+  const pdfUrlLine =
+    pdfUrl && pdfUrl.trim()
+      ? `<p><strong>PDF URL:</strong> <a href="${escapeHtml(pdfUrl.trim())}" target="_blank" rel="noopener noreferrer">View PDF</a></p>`
+      : '';
   const conversationSection =
     messages && messages.length > 0 ? formatConversation(messages) : '';
-  return [header, body, hubsLine, conversationSection]
+  return [header, body, hubsLine, pdfUrlLine, conversationSection]
     .filter(Boolean)
     .join('\n');
 }

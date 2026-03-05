@@ -39,3 +39,9 @@ coverage/
 *.pem
 .vercel
 *.tsbuildinfo
+
+#cursor
+.cursor/
+.agents/
+
+mcp.json
