@@ -80,28 +80,17 @@ export class OnboardingSessionGuard implements CanActivate {
       // Si tenemos cookieValue, verificar la firma
       sessionId = this.verify(cookieValue);
       if (!sessionId) {
-        console.warn('[OnboardingSessionGuard] Session verification failed:', {
-          cookiePreview: cookieValue.substring(0, 20) + '...',
-        });
         throw new UnauthorizedException('Sesión inválida o expirada');
       }
     } else {
       // Si no hay cookie, intentar obtener sessionId directamente del header
       const sessionIdHeader = req.headers['x-onboarding-session-id'] as string;
       if (sessionIdHeader) {
-        // Si recibimos el sessionId directamente, usarlo sin verificar la firma
-        // porque viene del frontend que ya validó el token en /session/validate
         sessionId = sessionIdHeader;
-        console.log('[OnboardingSessionGuard] Using sessionId from header (cross-domain fallback)');
       }
     }
 
     if (!sessionId) {
-      console.warn('[OnboardingSessionGuard] No session found:', {
-        hasCookie: !!req.cookies?.[ONBOARDING_SESSION_COOKIE],
-        hasHeader: !!req.headers['x-onboarding-session'],
-        hasSessionIdHeader: !!req.headers['x-onboarding-session-id'],
-      });
       throw new UnauthorizedException('Sesión de onboarding requerida');
     }
 

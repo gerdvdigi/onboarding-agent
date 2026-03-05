@@ -156,18 +156,7 @@ export class OnboardingSessionController {
     if (cookieDomain) {
       cookieOptions.domain = cookieDomain;
     }
-    
-    // Determinar si es cross-domain
-    const isCrossDomain = isProd && !cookieDomain;
-    
-    console.log('[OnboardingSessionController] Setting cookie:', {
-      isProd,
-      isCrossDomain,
-      cookieDomain: cookieDomain || 'none (cross-domain)',
-      sameSite,
-      secure: cookieOptions.secure,
-    });
-    
+
     res.cookie(ONBOARDING_SESSION_COOKIE, cookieValue, cookieOptions);
 
     await this.hubSpotService.updateContactProperties(session.email, {
