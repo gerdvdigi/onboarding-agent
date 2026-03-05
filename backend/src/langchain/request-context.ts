@@ -16,7 +16,8 @@ export function normalizeAnswersToPillars(
   };
   out.company_info = get('company_info') || '';
   out.hubs_included = get('hubs_included') || '';
-  out.subscription_levels = get('subscription_levels') || get('plan_levels') || '';
+  out.subscription_levels =
+    get('subscription_levels') || get('plan_levels') || '';
   out.overall_goals = get('overall_goals') || '';
   const hubParts = [
     get('hub_specific_details'),
@@ -37,7 +38,9 @@ export interface StoredOnboardingContext {
 /** Request-scoped context so tools can read answersCollected when the LLM omits it. Set by the service before streaming, cleared when done. */
 let currentOnboardingContext: StoredOnboardingContext | null = null;
 
-export function setOnboardingRequestContext(context: ChatContext | undefined): void {
+export function setOnboardingRequestContext(
+  context: ChatContext | undefined,
+): void {
   const normalized = normalizeAnswersToPillars(context?.answersCollected);
   const hasAny = Object.values(normalized).some((v) => v.trim().length > 0);
   currentOnboardingContext = {
@@ -50,6 +53,8 @@ export function clearOnboardingRequestContext(): void {
   currentOnboardingContext = null;
 }
 
-export function getOnboardingRequestContext(): StoredOnboardingContext | undefined {
+export function getOnboardingRequestContext():
+  | StoredOnboardingContext
+  | undefined {
   return currentOnboardingContext ?? undefined;
 }

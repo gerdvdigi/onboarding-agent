@@ -1,21 +1,55 @@
 import { Injectable } from '@nestjs/common';
 import { HumanMessage, AIMessage } from '@langchain/core/messages';
-import { streamOnboardingAgent } from '../langchain/agent/graph';
-import { UserInfo, ChatContext, ImplementationPlan } from '../common/types/onboarding.types';
+import {
+  streamOnboardingAgent,
+  AgentStreamChunk,
+} from '../langchain/agent/graph';
+import {
+  UserInfo,
+  ChatContext,
+  ImplementationPlan,
+} from '../common/types/onboarding.types';
 import {
   setOnboardingRequestContext,
   clearOnboardingRequestContext,
 } from '../langchain/request-context';
 import {
+  getTokenUsageTracker,
+  resetTokenUsageTracker,
+  formatTokenUsageSummary,
+} from '../langchain/utils/token-usage';
+import {
   deriveAnswersFromHistory,
   mergeAnswers,
 } from '../langchain/utils/derive-answers-from-history';
 
-export type StreamChatChunk = string | { type: 'plan_generated'; plan: ImplementationPlan };
+export type StreamChatChunk =
+  | string
+  | { type: 'plan_generated'; plan: ImplementationPlan }
+  | {
+      type: 'rag_metrics';
+      metrics: {
+        citationCoverage: number;
+        originalityScore: number;
+        hallucinationScore: number;
+        totalCitations: number;
+      };
+    }
+  | {
+      type: 'token_usage';
+      usage: {
+        openai: {
+          promptTokens: number;
+          completionTokens: number;
+          totalTokens: number;
+        };
+        cohere: { inputTokens: number };
+      };
+    };
 
 @Injectable()
 export class OnboardingAgentService {
-  async* streamChat(
+  async *streamChat(
     messages: Array<{ role: string; content: string }>,
     userInfo: UserInfo,
     context?: ChatContext,
@@ -25,7 +59,9 @@ export class OnboardingAgentService {
     const uniqueMessages = messages.filter((msg) => {
       const messageKey = `${msg.role}:${msg.content.trim()}`;
       if (seenMessages.has(messageKey)) {
-        console.warn(`[Backend] Mensaje duplicado filtrado: [${msg.role}] ${msg.content.substring(0, 50)}...`);
+        console.warn(
+          `[Backend] Mensaje duplicado filtrado: [${msg.role}] ${msg.content.substring(0, 50)}...`,
+        );
         return false;
       }
       seenMessages.add(messageKey);
@@ -37,7 +73,7 @@ export class OnboardingAgentService {
     for (let i = 0; i < uniqueMessages.length; i++) {
       const current = uniqueMessages[i];
       const previous = uniqueMessages[i - 1];
-      
+
       // Si el mensaje actual es del asistente y es idéntico al anterior, saltarlo
       if (
         current.role === 'assistant' &&
@@ -45,10 +81,12 @@ export class OnboardingAgentService {
         previous.role === 'assistant' &&
         current.content.trim() === previous.content.trim()
       ) {
-        console.warn(`[Backend] Mensaje del asistente duplicado consecutivo detectado y filtrado`);
+        console.warn(
+          `[Backend] Mensaje del asistente duplicado consecutivo detectado y filtrado`,
+        );
         continue;
       }
-      
+
       cleanedMessages.push(current);
     }
 
@@ -62,7 +100,9 @@ export class OnboardingAgentService {
 
     // Debug: Log del historial completo
     console.log(`[Backend] ========================================`);
-    console.log(`[Backend] Procesando ${langchainMessages.length} mensajes del historial`);
+    console.log(
+      `[Backend] Procesando ${langchainMessages.length} mensajes del historial`,
+    );
     console.log(`[Backend] Historial completo:`);
     langchainMessages.forEach((msg, idx) => {
       const role = msg instanceof HumanMessage ? 'USER' : 'ASSISTANT';
@@ -77,10 +117,14 @@ export class OnboardingAgentService {
 
     // DERIVE answersCollected from message history (don't depend on frontend)
     const derived = deriveAnswersFromHistory(cleanedMessages);
-    const mergedAnswers = mergeAnswers(derived.answersCollected, context?.answersCollected);
-    const mergedQuestionsAsked = derived.questionsAsked.length > 0
-      ? derived.questionsAsked
-      : context?.questionsAsked ?? [];
+    const mergedAnswers = mergeAnswers(
+      derived.answersCollected,
+      context?.answersCollected,
+    );
+    const mergedQuestionsAsked =
+      derived.questionsAsked.length > 0
+        ? derived.questionsAsked
+        : (context?.questionsAsked ?? []);
 
     // Build the enriched context
     const enrichedContext: ChatContext = {
@@ -93,7 +137,8 @@ export class OnboardingAgentService {
     // Log derived context
     console.log(`[Backend] Derived answersCollected from history:`);
     for (const [key, value] of Object.entries(mergedAnswers)) {
-      const preview = value.length > 80 ? value.substring(0, 80) + '...' : value;
+      const preview =
+        value.length > 80 ? value.substring(0, 80) + '...' : value;
       console.log(`[Backend]   - ${key}: "${preview}"`);
     }
     console.log(`[Backend] Questions asked: ${mergedQuestionsAsked.length}`);
@@ -101,15 +146,34 @@ export class OnboardingAgentService {
 
     // Set request context for tools and start streaming
     setOnboardingRequestContext(enrichedContext);
-    const stream = streamOnboardingAgent(langchainMessages, userInfo, enrichedContext);
+    getTokenUsageTracker(); // Initialize tracker for this request
+    const stream = streamOnboardingAgent(
+      langchainMessages,
+      userInfo,
+      enrichedContext,
+    );
 
     let totalContent = '';
 
+    let usage: Awaited<ReturnType<typeof resetTokenUsageTracker>> = null;
     try {
-      for await (const chunk of stream) {
-        if (typeof chunk === 'object' && chunk !== null && 'type' in chunk && chunk.type === 'plan_generated' && 'plan' in chunk) {
-          yield { type: 'plan_generated', plan: chunk.plan };
-          continue;
+      for await (const chunk of stream as AsyncGenerator<AgentStreamChunk>) {
+        if (typeof chunk === 'object' && chunk !== null) {
+          if (chunk.type === 'plan_generated') {
+            yield { type: 'plan_generated', plan: chunk.plan };
+            if (chunk.ragMetrics) {
+              yield {
+                type: 'rag_metrics',
+                metrics: {
+                  citationCoverage: chunk.ragMetrics.citationCoverage,
+                  originalityScore: chunk.ragMetrics.originalityScore,
+                  hallucinationScore: chunk.ragMetrics.hallucinationScore,
+                  totalCitations: chunk.ragMetrics.totalCitations,
+                },
+              };
+            }
+            continue;
+          }
         }
         const token = typeof chunk === 'string' ? chunk : '';
         if (token.length > 0) {
@@ -120,13 +184,27 @@ export class OnboardingAgentService {
           yield token;
         }
       }
+      usage = resetTokenUsageTracker();
+      if (
+        usage &&
+        (usage.openai.totalTokens > 0 || usage.cohere.inputTokens > 0)
+      ) {
+        console.log('[Backend] ' + formatTokenUsageSummary(usage));
+        yield {
+          type: 'token_usage',
+          usage: { openai: usage.openai, cohere: usage.cohere },
+        };
+      }
     } finally {
       clearOnboardingRequestContext();
+      if (!usage) resetTokenUsageTracker();
     }
 
     // Log final del contenido completo
     if (totalContent) {
-      console.log(`[Backend] Contenido completo final (${totalContent.length} chars): "${totalContent.substring(0, 200)}${totalContent.length > 200 ? '...' : ''}"`);
+      console.log(
+        `[Backend] Contenido completo final (${totalContent.length} chars): "${totalContent.substring(0, 200)}${totalContent.length > 200 ? '...' : ''}"`,
+      );
     }
   }
 }

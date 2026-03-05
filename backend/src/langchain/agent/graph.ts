@@ -2,7 +2,20 @@ import { ChatOpenAI } from '@langchain/openai';
 import { BaseMessage } from '@langchain/core/messages';
 import { ConsoleCallbackHandler } from '@langchain/core/tracers/console';
 import { createAgent } from 'langchain';
-import { UserInfo, ChatContext, ImplementationPlan } from '../../common/types/onboarding.types';
+import { TokenUsageCallbackHandler } from '../utils/token-usage';
+import {
+  UserInfo,
+  ChatContext,
+  ImplementationPlan,
+} from '../../common/types/onboarding.types';
+import {
+  extractCitations,
+  calculateRAGMetrics,
+  formatRAGMetrics,
+  validatePlanAgainstChunks,
+  RAGUsageMetrics,
+} from '../utils/rag-evaluator';
+import { getLastRetrievedChunks } from '../tools/search-knowledge-base';
 import {
   detectPlanReadyTool,
   generatePlanDraftTool,
@@ -14,13 +27,26 @@ import { langchainConfig, getOpenAIApiKey } from '../config';
 import { normalizeAnswersToPillars } from '../request-context';
 
 // 1. Array of English-native tools
-const tools = [detectPlanReadyTool, searchKnowledgeBaseTool, generatePlanDraftTool];
+const tools = [
+  detectPlanReadyTool,
+  searchKnowledgeBaseTool,
+  generatePlanDraftTool,
+];
+
+export type AgentStreamChunk =
+  | string
+  | {
+      type: 'plan_generated';
+      plan: ImplementationPlan;
+      ragMetrics?: RAGUsageMetrics;
+    }
+  | { type: 'error'; message: string };
 
 export async function* streamOnboardingAgent(
   messages: BaseMessage[],
   userInfo?: UserInfo,
   context?: ChatContext,
-) {
+): AsyncGenerator<AgentStreamChunk, void, unknown> {
   const llm = new ChatOpenAI({
     modelName: langchainConfig.model.name,
     temperature: langchainConfig.model.temperature,
@@ -34,14 +60,17 @@ export async function* streamOnboardingAgent(
           company: userInfo.company,
           website: userInfo.website,
           email: userInfo.email,
-          
         }
       : undefined,
   );
 
   // 2. Inject context: bullet list + explicit JSON so the agent can pass answersCollected to tools
-  const normalizedAnswers = normalizeAnswersToPillars(context?.answersCollected);
-  const hasDiscovery = Object.values(normalizedAnswers).some((v) => v.trim().length > 0);
+  const normalizedAnswers = normalizeAnswersToPillars(
+    context?.answersCollected,
+  );
+  const hasDiscovery = Object.values(normalizedAnswers).some(
+    (v) => v.trim().length > 0,
+  );
   if (hasDiscovery) {
     const formattedDiscovery = Object.entries(normalizedAnswers)
       .filter(([, v]) => v && String(v).trim())
@@ -61,6 +90,8 @@ export async function* streamOnboardingAgent(
   });
 
   let capturedPlan: ImplementationPlan | null = null;
+  let generatedPlanContent = '';
+  let ragMetrics: RAGUsageMetrics | null = null;
 
   // 3. Listener to capture the event from generate_plan_draft tool
   setPlanGeneratedListener((plan) => {
@@ -72,36 +103,60 @@ export async function* streamOnboardingAgent(
       { messages },
       {
         streamMode: 'messages',
-        callbacks: [new ConsoleCallbackHandler()],
+        callbacks: [
+          new ConsoleCallbackHandler(),
+          new TokenUsageCallbackHandler(),
+        ],
       },
     );
 
     for await (const [message_chunk] of stream) {
       if (message_chunk) {
         let content = '';
-        
+
         // Handle both standard content and content blocks
-        if (message_chunk.contentBlocks && Array.isArray(message_chunk.contentBlocks)) {
+        if (
+          message_chunk.contentBlocks &&
+          Array.isArray(message_chunk.contentBlocks)
+        ) {
           content = message_chunk.contentBlocks
-            .map((block: any) => block?.text || block?.content || (typeof block === 'string' ? block : ''))
+            .map(
+              (block: any) =>
+                block?.text ||
+                block?.content ||
+                (typeof block === 'string' ? block : ''),
+            )
             .filter(Boolean)
             .join('');
         } else if (message_chunk.content) {
-          content = typeof message_chunk.content === 'string' 
-            ? message_chunk.content 
-            : String(message_chunk.content);
+          content =
+            typeof message_chunk.content === 'string'
+              ? message_chunk.content
+              : String(message_chunk.content);
         }
 
         if (!content) continue;
+
+        // Accumulate plan content for RAG evaluation
+        generatedPlanContent += content;
 
         const trimmed = content.trim();
 
         // 4. CLEANING FILTERS (Strictly English)
         // Skip technical tool outputs if they accidentally leak into the text stream
-        if (trimmed.startsWith('{') || trimmed.startsWith('["') || trimmed.includes('"company":')) continue;
-        
+        if (
+          trimmed.startsWith('{') ||
+          trimmed.startsWith('["') ||
+          trimmed.includes('"company":')
+        )
+          continue;
+
         // Safety net: Never show raw internal knowledge or RAG markers
-        if (content.includes('[INTERNAL KNOWLEDGE]') || content.includes('TECHNICAL_CONTEXT:')) continue;
+        if (
+          content.includes('[INTERNAL KNOWLEDGE]') ||
+          content.includes('TECHNICAL_CONTEXT:')
+        )
+          continue;
         // Block RAG tool output from ever reaching the user (excerpts, guide labels, etc.)
         const ragLeakMarkers = [
           'Retrieved knowledge highlights',
@@ -114,17 +169,55 @@ export async function* streamOnboardingAgent(
           '[INTERNAL USE ONLY',
         ];
         if (ragLeakMarkers.some((m) => content.includes(m))) continue;
-        
+
         // Skip tool errors to handle them gracefully in the background
-        if (/\\bError invoking tool\\b|with error:\\s*Error:/i.test(content)) continue;
+        if (/\\bError invoking tool\\b|with error:\\s*Error:/i.test(content))
+          continue;
 
         yield content;
       }
     }
 
-    // 5. Final Step: Emit the structured plan if it was generated
+    // 5. Evaluate RAG usage if we generated a plan
+    if (generatedPlanContent && generatedPlanContent.includes('#')) {
+      const retrievedChunks = getLastRetrievedChunks();
+      if (retrievedChunks.length > 0) {
+        try {
+          const citations = extractCitations(generatedPlanContent);
+          ragMetrics = calculateRAGMetrics(
+            retrievedChunks,
+            generatedPlanContent,
+            citations,
+          );
+          console.log(formatRAGMetrics(ragMetrics));
+
+          // Validate plan against chunks
+          const validation = await validatePlanAgainstChunks(
+            generatedPlanContent,
+            retrievedChunks,
+          );
+          if (validation.unsupportedSections.length > 0) {
+            console.warn(
+              '[RAG] Sections with low chunk support:',
+              validation.unsupportedSections,
+            );
+          }
+          console.log(
+            `[RAG] Plan coverage: ${validation.coverage.toFixed(1)}%`,
+          );
+        } catch (evalError) {
+          console.error('[RAG] Error evaluating plan:', evalError);
+        }
+      }
+    }
+
+    // 6. Final Step: Emit the structured plan if it was generated
     if (capturedPlan) {
-      yield { type: 'plan_generated' as const, plan: capturedPlan };
+      yield {
+        type: 'plan_generated' as const,
+        plan: capturedPlan,
+        ragMetrics: ragMetrics ?? undefined,
+      };
     }
   } catch (error) {
     console.error('[Graph] Stream error:', error);

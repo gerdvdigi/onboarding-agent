@@ -1,24 +1,26 @@
 "use client";
 
+import { startTransition, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
-import { useRouter } from "next/navigation";
+import { getApiBaseUrl, defaultFetchOptions } from "@/lib/config/api";
 
 const basicInfoSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  lastName: z.string().min(2, "Last name must be at least 2 characters"),
+  name: z.string().min(2, "First name is required"),
+  lastName: z.string().min(2, "Last name is required"),
   email: z.string().email("Invalid email"),
   company: z.string().min(2, "Company name is required"),
   website: z
     .string()
     .url("Invalid URL")
     .or(z.literal(""))
-    .transform((val) => (val === "" ? "https://example.com" : val)),
+    .transform((val) => (val === "" ? "" : val)),
   terms: z.boolean().refine((val) => val === true, {
     message: "You must accept the terms and conditions",
   }),
@@ -27,8 +29,9 @@ const basicInfoSchema = z.object({
 type BasicInfoFormData = z.infer<typeof basicInfoSchema>;
 
 export function BasicInfoForm() {
-  const router = useRouter();
-  const { setUserInfo, setCurrentStep } = useOnboardingStore();
+  const { setUserInfo } = useOnboardingStore();
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
@@ -37,34 +40,82 @@ export function BasicInfoForm() {
   } = useForm<BasicInfoFormData>({
     resolver: zodResolver(basicInfoSchema),
     defaultValues: {
+      name: "",
+      lastName: "",
       website: "",
       terms: false,
     },
   });
 
-  const onSubmit = (data: BasicInfoFormData) => {
+  const onSubmit = async (data: BasicInfoFormData) => {
+    setSubmitError(null);
     setUserInfo({
       name: data.name,
       lastName: data.lastName,
       email: data.email,
       company: data.company,
-      website: data.website,
+      website: data.website || "https://example.com",
       terms: data.terms,
     });
-    setCurrentStep(2);
-    router.push("/onboarding/step-2");
+
+    const res = await fetch(`${getApiBaseUrl()}/onboarding/step-1/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      ...defaultFetchOptions,
+      body: JSON.stringify({
+        name: data.name,
+        lastName: data.lastName,
+        email: data.email,
+        company: data.company,
+        website: data.website || undefined,
+        terms: Boolean(data.terms),
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const message = body.message || "Something went wrong. Please try again.";
+      startTransition(() => setSubmitError(message));
+      return;
+    }
+    startTransition(() => setSubmitted(true));
   };
 
-  return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+  const successContent = (
+    <div className="rounded-xl border border-border bg-section-bg p-6 text-center">
+      <h2 className="text-xl font-semibold text-heading">
+        Check your email
+      </h2>
+      <p className="mt-2 text-muted-foreground">
+        We sent you an access link. Click the link to continue to the next step.
+      </p>
+      <p className="mt-4 text-sm text-muted-foreground">
+        If you don&apos;t see it, check your spam folder.
+      </p>
+    </div>
+  );
+
+  const formContent = (
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="space-y-6"
+      autoComplete="off"
+    >
+      {submitError != null ? (
+        <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {submitError}
+        </p>
+      ) : null}
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="name">First name *</Label>
             <Input
-                id="name"
+              id="name"
+              data-testid="first-name"
+              autoComplete="off"
               {...register("name")}
-              placeholder="John"
+              placeholder="Your first name"
               className={errors.name ? "border-red-500" : ""}
             />
             {errors.name && (
@@ -76,8 +127,10 @@ export function BasicInfoForm() {
             <Label htmlFor="lastName">Last name *</Label>
             <Input
               id="lastName"
+              data-testid="last-name"
+              autoComplete="off"
               {...register("lastName")}
-              placeholder="Doe"
+              placeholder="Your last name"
               className={errors.lastName ? "border-red-500" : ""}
             />
             {errors.lastName && (
@@ -144,8 +197,17 @@ export function BasicInfoForm() {
       </div>
 
       <Button type="submit" disabled={isSubmitting} className="w-full">
-        {isSubmitting ? "Processing..." : "Continue"}
+        {isSubmitting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+            Processing...
+          </>
+        ) : (
+          "Continue"
+        )}
       </Button>
     </form>
   );
+
+  return submitted ? successContent : formContent;
 }

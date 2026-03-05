@@ -7,3 +7,8 @@ export function getApiBaseUrl(): string {
   const url = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001";
   return url.replace(/\/$/, "");
 }
+
+/** Opciones por defecto para llamadas al backend: incluir cookies (sesión onboarding). */
+export const defaultFetchOptions: RequestInit = {
+  credentials: "include",
+};

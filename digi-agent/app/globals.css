@@ -1,31 +1,37 @@
 @import "tailwindcss";
 
+/* Digifianz palette: titles #02345b, primary #ee5e60, success green #289888 */
 :root {
   --background: 0 0% 100%;
-  --foreground: 0 0% 3.9%;
+  --foreground: 220 15% 12%;
+  --heading: 204 96% 18%;
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.9%;
+  --card-foreground: 220 15% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 3.9%;
-  --primary: 0 0% 9%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 0 0% 3.9%;
+  --popover-foreground: 220 15% 12%;
+  --primary: 359 82% 65%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 220 15% 12%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+  --accent: 359 82% 97%;
+  --accent-foreground: 359 82% 40%;
+  --success: 171 58% 38%;
+  --success-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 359 82% 65%;
   --radius: 0.5rem;
+  --section-bg: 220 14% 98%;
 }
 
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
+  --color-heading: hsl(var(--heading));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
   --color-popover: hsl(var(--popover));
@@ -38,37 +44,42 @@
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-section-bg: hsl(var(--section-bg));
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-  }
+.dark {
+  --background: 220 15% 8%;
+  --foreground: 0 0% 100%;
+  --heading: 0 0% 100%;
+  --card: 220 15% 11%;
+  --card-foreground: 0 0% 100%;
+  --popover: 220 15% 11%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 359 82% 62%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 18%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 220 14% 18%;
+  --muted-foreground: 220 10% 85%;
+  --accent: 359 50% 22%;
+  --accent-foreground: 359 82% 85%;
+  --success: 171 45% 45%;
+  --success-foreground: 0 0% 100%;
+  --destructive: 0 62.8% 45%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 13% 20%;
+  --input: 220 13% 20%;
+  --ring: 359 82% 62%;
+  --section-bg: 220 14% 12%;
 }
 
 body {
@@ -79,4 +90,14 @@ body {
 
 * {
   border-color: hsl(var(--border));
+}
+
+/* Typing indicator: staggered bounce for chat dots */
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
 }

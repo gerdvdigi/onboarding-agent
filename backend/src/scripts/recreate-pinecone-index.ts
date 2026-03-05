@@ -1,7 +1,7 @@
 /**
  * Script to delete and recreate Pinecone index
  * Useful if you need to change the embedding model or dimensions
- * 
+ *
  * Usage:
  *   pnpm ts-node src/scripts/recreate-pinecone-index.ts
  */
@@ -28,7 +28,7 @@ async function recreateIndex() {
 
   try {
     console.log(`🗑️  Deleting existing index: ${indexName}...`);
-    
+
     // List indexes
     const indexes = await pinecone.listIndexes();
     const indexExists = indexes.indexes?.some((idx) => idx.name === indexName);
@@ -36,7 +36,7 @@ async function recreateIndex() {
     if (indexExists) {
       await pinecone.deleteIndex(indexName);
       console.log(`✅ Index ${indexName} deleted`);
-      
+
       // Wait for complete deletion
       console.log('⏳ Waiting for complete deletion...');
       await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -45,25 +45,31 @@ async function recreateIndex() {
     }
 
     console.log(`\n🔨 Creating new index: ${indexName}...`);
-    
+
     // Get dimensions according to provider
     const provider = process.env.EMBEDDING_PROVIDER || 'openai';
     let dimension = 1536; // default OpenAI
-    
+
     switch (provider) {
       case 'voyage':
         const voyageModel = process.env.VOYAGE_MODEL || 'voyage-2';
         dimension = voyageModel.includes('large') ? 1536 : 1024;
-        console.log(`📐 Using dimensions for Voyage AI (${voyageModel}): ${dimension}`);
+        console.log(
+          `📐 Using dimensions for Voyage AI (${voyageModel}): ${dimension}`,
+        );
         break;
       case 'cohere':
         dimension = 1024;
         console.log(`📐 Using dimensions for Cohere: ${dimension}`);
         break;
       case 'huggingface':
-        const hfModel = process.env.HUGGINGFACE_MODEL || 'sentence-transformers/all-MiniLM-L6-v2';
+        const hfModel =
+          process.env.HUGGINGFACE_MODEL ||
+          'sentence-transformers/all-MiniLM-L6-v2';
         dimension = hfModel.includes('e5-base') ? 768 : 384;
-        console.log(`📐 Using dimensions for HuggingFace (${hfModel}): ${dimension}`);
+        console.log(
+          `📐 Using dimensions for HuggingFace (${hfModel}): ${dimension}`,
+        );
         break;
       case 'ollama':
         dimension = 768;
@@ -71,11 +77,14 @@ async function recreateIndex() {
         break;
       case 'openai':
       default:
-        const openaiModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002';
+        const openaiModel =
+          process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002';
         dimension = openaiModel.includes('large') ? 3072 : 1536;
-        console.log(`📐 Using dimensions for OpenAI (${openaiModel}): ${dimension}`);
+        console.log(
+          `📐 Using dimensions for OpenAI (${openaiModel}): ${dimension}`,
+        );
     }
-    
+
     await pinecone.createIndex({
       name: indexName,
       dimension,

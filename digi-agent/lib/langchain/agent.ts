@@ -19,6 +19,9 @@ export interface ImplementationPlan {
   }[];
   timeline: string;
   recommendations: string[];
+  hub_sales?: boolean;
+  hub_marketing?: boolean;
+  hub_services?: boolean;
 }
 
 export interface OnboardingContext {
