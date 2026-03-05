@@ -21,7 +21,5 @@ export function getDefaultFetchOptions(): RequestInit {
   };
 }
 
-/** @deprecated Usa getDefaultFetchOptions() en su lugar para soporte de cross-domain */
-export const defaultFetchOptions: RequestInit = {
-  credentials: "include",
-};
+/** Alias para compatibilidad. Incluye session headers para cross-domain. */
+export const defaultFetchOptions: RequestInit = getDefaultFetchOptions();

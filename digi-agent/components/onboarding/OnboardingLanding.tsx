@@ -39,21 +39,13 @@ export function OnboardingLanding() {
               stage: data.onboardingStage,
             });
             
-            // Verificar si la cookie se estableció (solo en cliente)
-            if (typeof document !== 'undefined') {
-              const hasCookie = document.cookie.includes('onboarding_session');
-              if (!hasCookie) {
-                console.warn('[OnboardingLanding] Cookie not detected after validation');
-                // Fallback: guardar sessionId en localStorage para usar en headers
-                // Esto es necesario cuando las cookies no funcionan en cross-domain
-                if (data.sessionId) {
-                  console.log('[OnboardingLanding] Storing sessionId in localStorage as fallback');
-                  localStorage.setItem('onboarding_session_id', data.sessionId);
-                }
-              } else {
-                // Si la cookie funciona, limpiar el fallback
-                localStorage.removeItem('onboarding_session_id');
-              }
+            // Cross-domain: la cookie del backend no llega al frontend.
+            // Establecer cookie en el dominio del FRONTEND para que Next.js la reciba
+            // en requests server-side y pueda pasarla al backend.
+            if (typeof document !== 'undefined' && data.sessionId) {
+              const maxAge = 60 * 60 * 24 * 3; // 3 días
+              document.cookie = `onboarding_session_id=${data.sessionId}; path=/; max-age=${maxAge}; SameSite=Lax`;
+              localStorage.setItem('onboarding_session_id', data.sessionId);
             }
             
             if (data.userInfo) {

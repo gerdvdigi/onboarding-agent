@@ -1,8 +1,10 @@
 /**
  * Server-side fetch for onboarding conversations.
  * Forwards cookies from the incoming request to the backend.
- * Returns null on auth failure (401) so the client can fetch/redirect as needed.
+ * En cross-domain usa X-Onboarding-Session-Id desde la cookie del frontend.
  */
+
+import { buildSessionHeaders } from './session-headers';
 
 export interface Conversation {
   id: string;
@@ -17,8 +19,17 @@ export async function fetchConversationsServer(
     process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:3001';
   const url = baseUrl.replace(/\/$/, '') + '/onboarding/conversations';
 
+  const sessionHeaders = buildSessionHeaders(cookieHeader);
+  const headers: HeadersInit = {
+    'Cache-Control': 'no-store',
+    ...sessionHeaders,
+  };
+  if (!sessionHeaders['X-Onboarding-Session-Id'] && cookieHeader) {
+    (headers as Record<string, string>)['cookie'] = cookieHeader;
+  }
+
   const res = await fetch(url, {
-    headers: cookieHeader ? { cookie: cookieHeader } : {},
+    headers,
     cache: 'no-store',
   });
 

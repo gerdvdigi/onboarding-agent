@@ -1,6 +1,7 @@
 /**
  * Server-side fetch for onboarding session.
  * Forwards cookies from the incoming request to the backend.
+ * En cross-domain: extrae onboarding_session_id (cookie del frontend) y la envía como header.
  */
 
 import type { UserInfo } from '@/lib/langchain/agent';
@@ -10,6 +11,8 @@ export interface SessionMeResponse {
   userInfo?: UserInfo;
   onboardingStage?: string;
 }
+
+import { parseSessionIdFromCookie, buildSessionHeaders } from './session-headers';
 
 export async function fetchSessionMe(
   cookieHeader: string | null
@@ -21,28 +24,18 @@ export async function fetchSessionMe(
   try {
     const headers: HeadersInit = {
       'Cache-Control': 'no-store',
+      ...buildSessionHeaders(cookieHeader),
     };
-    
-    if (cookieHeader) {
+    if (!parseSessionIdFromCookie(cookieHeader) && cookieHeader) {
       headers['cookie'] = cookieHeader;
     }
-    
+
     const res = await fetch(url, {
       headers,
       cache: 'no-store',
-      // En server-side fetch, las cookies deben pasarse explícitamente en headers
-      // No usar credentials: 'include' porque no funciona en server-side
     });
 
     if (!res.ok) {
-      const errorText = await res.text();
-      console.error('[fetchSessionMe] Backend returned error:', {
-        status: res.status,
-        statusText: res.statusText,
-        error: errorText.substring(0, 200),
-        hasCookieHeader: !!cookieHeader,
-        cookiePreview: cookieHeader?.substring(0, 50) || 'none',
-      });
       return { ok: false };
     }
 
