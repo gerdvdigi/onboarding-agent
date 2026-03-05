@@ -60,8 +60,11 @@ export function BasicInfoForm() {
 
     const res = await fetch(`${getApiBaseUrl()}/onboarding/step-1/submit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       ...defaultFetchOptions,
+      headers: {
+        "Content-Type": "application/json",
+        ...(defaultFetchOptions.headers as Record<string, string>),
+      },
       body: JSON.stringify({
         name: data.name,
         lastName: data.lastName,
