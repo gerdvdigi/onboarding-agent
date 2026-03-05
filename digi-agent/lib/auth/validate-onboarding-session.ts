@@ -3,7 +3,8 @@
  * Redirects if session is invalid or stage-based redirect applies.
  */
 
-import { headers, redirect } from 'next/headers';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { fetchSessionMe } from '@/lib/api/session-me';
 import type { UserInfo } from '@/lib/langchain/agent';
 

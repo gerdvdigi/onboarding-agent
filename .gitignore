@@ -43,5 +43,3 @@ coverage/
 #cursor
 .cursor/
 .agents/
-
-mcp.json
