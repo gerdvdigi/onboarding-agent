@@ -27,9 +27,10 @@ async function bootstrap() {
       );
       callback(null, allowed ? origin : false);
     },
-    credentials: true,
+    credentials: true, // CRÍTICO: permite cookies en cross-origin requests
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Onboarding-Session'],
+    exposedHeaders: ['Set-Cookie'], // Permite que el cliente vea Set-Cookie header
   });
 
   // Habilitar validación global de DTOs

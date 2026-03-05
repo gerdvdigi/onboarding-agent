@@ -128,13 +128,38 @@ export class OnboardingSessionController {
 
     const cookieValue = this.guard.getSignedCookieValue(session.sessionId);
     const isProd = process.env.NODE_ENV === 'production';
-    res.cookie(ONBOARDING_SESSION_COOKIE, cookieValue, {
+    
+    // Para dominios completamente diferentes, necesitamos SameSite: 'none' y Secure: true
+    // Esto requiere HTTPS en ambos dominios
+    const cookieDomain = this.config.get<string>('COOKIE_DOMAIN');
+    
+    // Si COOKIE_DOMAIN está configurado, estamos en el mismo dominio base (subdominios)
+    // Si NO está configurado, son dominios completamente diferentes
+    const isCrossDomain = isProd && !cookieDomain;
+    
+    const cookieOptions: any = {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'lax' : 'lax',
+      secure: isProd, // Siempre true en producción (requiere HTTPS)
+      sameSite: isCrossDomain ? 'none' : 'lax', // 'none' para cross-domain, 'lax' para mismo dominio
       maxAge: COOKIE_MAX_AGE_SEC * 1000,
       path: '/',
+    };
+    
+    // Solo establecer domain si está configurado (mismo dominio base)
+    // NO establecer domain para dominios completamente diferentes
+    if (cookieDomain) {
+      cookieOptions.domain = cookieDomain;
+    }
+    
+    console.log('[OnboardingSessionController] Setting cookie:', {
+      isProd,
+      isCrossDomain,
+      cookieDomain: cookieDomain || 'none (cross-domain)',
+      sameSite: cookieOptions.sameSite,
+      secure: cookieOptions.secure,
     });
+    
+    res.cookie(ONBOARDING_SESSION_COOKIE, cookieValue, cookieOptions);
 
     await this.hubSpotService.updateContactProperties(session.email, {
       ...(isStageBeyondDiscovery(session.onboardingStage)
