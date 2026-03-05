@@ -8,7 +8,20 @@ export function getApiBaseUrl(): string {
   return url.replace(/\/$/, "");
 }
 
+import { getSessionHeaders } from './api/get-session-header';
+
 /** Opciones por defecto para llamadas al backend: incluir cookies (sesión onboarding). */
+export function getDefaultFetchOptions(): RequestInit {
+  const sessionHeaders = getSessionHeaders();
+  return {
+    credentials: "include",
+    headers: {
+      ...sessionHeaders,
+    },
+  };
+}
+
+/** @deprecated Usa getDefaultFetchOptions() en su lugar para soporte de cross-domain */
 export const defaultFetchOptions: RequestInit = {
   credentials: "include",
 };

@@ -44,6 +44,15 @@ export function OnboardingLanding() {
               const hasCookie = document.cookie.includes('onboarding_session');
               if (!hasCookie) {
                 console.warn('[OnboardingLanding] Cookie not detected after validation');
+                // Fallback: guardar sessionId en localStorage para usar en headers
+                // Esto es necesario cuando las cookies no funcionan en cross-domain
+                if (data.sessionId) {
+                  console.log('[OnboardingLanding] Storing sessionId in localStorage as fallback');
+                  localStorage.setItem('onboarding_session_id', data.sessionId);
+                }
+              } else {
+                // Si la cookie funciona, limpiar el fallback
+                localStorage.removeItem('onboarding_session_id');
               }
             }
             

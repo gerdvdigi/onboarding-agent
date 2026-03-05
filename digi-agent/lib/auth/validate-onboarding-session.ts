@@ -31,9 +31,21 @@ export async function validateOnboardingSession(
 ): Promise<ValidatedSession> {
   const headersList = await headers();
   const cookie = headersList.get('cookie');
+  
+  // Debug: verificar si la cookie está presente
+  const hasOnboardingCookie = cookie?.includes('onboarding_session');
+  if (!hasOnboardingCookie) {
+    console.warn('[validateOnboardingSession] No onboarding_session cookie found in request headers');
+  }
+  
   const session = await fetchSessionMe(cookie);
 
   if (!session.ok || !session.userInfo) {
+    console.error('[validateOnboardingSession] Session validation failed:', {
+      ok: session.ok,
+      hasCookie: !!cookie,
+      hasOnboardingCookie,
+    });
     redirect('/onboarding/step-1');
   }
 

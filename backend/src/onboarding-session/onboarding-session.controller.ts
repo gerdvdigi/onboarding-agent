@@ -129,33 +129,42 @@ export class OnboardingSessionController {
     const cookieValue = this.guard.getSignedCookieValue(session.sessionId);
     const isProd = process.env.NODE_ENV === 'production';
     
-    // Para dominios completamente diferentes, necesitamos SameSite: 'none' y Secure: true
-    // Esto requiere HTTPS en ambos dominios
+    // Configuración de cookie para producción
+    // Si COOKIE_DOMAIN está configurado, úsalo (ej: '.example.com' para subdominios)
+    // Si frontend y backend están en dominios diferentes, SameSite debe ser 'none' con Secure: true
     const cookieDomain = this.config.get<string>('COOKIE_DOMAIN');
     
-    // Si COOKIE_DOMAIN está configurado, estamos en el mismo dominio base (subdominios)
-    // Si NO está configurado, son dominios completamente diferentes
-    const isCrossDomain = isProd && !cookieDomain;
+    // Determinar SameSite basado en si están en el mismo dominio
+    let sameSite: 'lax' | 'none' | 'strict' = 'lax';
+    if (isProd && cookieDomain) {
+      // Si hay un dominio compartido, usar 'lax' está bien
+      sameSite = 'lax';
+    } else if (isProd) {
+      // Si no hay dominio compartido, necesitamos 'none' para cross-domain
+      // Pero 'none' requiere Secure: true y HTTPS
+      sameSite = 'none';
+    }
     
     const cookieOptions: any = {
       httpOnly: true,
-      secure: isProd, // Siempre true en producción (requiere HTTPS)
-      sameSite: isCrossDomain ? 'none' : 'lax', // 'none' para cross-domain, 'lax' para mismo dominio
+      secure: isProd, // En producción siempre true para HTTPS
+      sameSite,
       maxAge: COOKIE_MAX_AGE_SEC * 1000,
       path: '/',
     };
     
-    // Solo establecer domain si está configurado (mismo dominio base)
-    // NO establecer domain para dominios completamente diferentes
     if (cookieDomain) {
       cookieOptions.domain = cookieDomain;
     }
+    
+    // Determinar si es cross-domain
+    const isCrossDomain = isProd && !cookieDomain;
     
     console.log('[OnboardingSessionController] Setting cookie:', {
       isProd,
       isCrossDomain,
       cookieDomain: cookieDomain || 'none (cross-domain)',
-      sameSite: cookieOptions.sameSite,
+      sameSite,
       secure: cookieOptions.secure,
     });
     
