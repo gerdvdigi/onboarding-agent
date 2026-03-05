@@ -19,12 +19,30 @@ export async function fetchSessionMe(
   const url = baseUrl.replace(/\/$/, '') + '/onboarding/session/me';
 
   try {
+    const headers: HeadersInit = {
+      'Cache-Control': 'no-store',
+    };
+    
+    if (cookieHeader) {
+      headers['cookie'] = cookieHeader;
+    }
+    
     const res = await fetch(url, {
-      headers: cookieHeader ? { cookie: cookieHeader } : {},
+      headers,
       cache: 'no-store',
+      // En server-side fetch, las cookies deben pasarse explícitamente en headers
+      // No usar credentials: 'include' porque no funciona en server-side
     });
 
     if (!res.ok) {
+      const errorText = await res.text();
+      console.error('[fetchSessionMe] Backend returned error:', {
+        status: res.status,
+        statusText: res.statusText,
+        error: errorText.substring(0, 200),
+        hasCookieHeader: !!cookieHeader,
+        cookiePreview: cookieHeader?.substring(0, 50) || 'none',
+      });
       return { ok: false };
     }
 
