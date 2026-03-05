@@ -2,17 +2,28 @@ import {
   Controller,
   Post,
   Body,
+  Req,
   Res,
   HttpStatus,
   HttpException,
+  UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfmake = require('pdfmake');
 import { GeneratePdfRequestDto } from '../common/dto/pdf.dto';
 import { normalizeMarkdown } from '../common/utils/normalize-markdown';
+import {
+  OnboardingSessionGuard,
+  getOnboardingSessionFromRequest,
+} from '../onboarding-session/onboarding-session.guard';
+import { OnboardingSessionService } from '../onboarding-session/onboarding-session.service';
+import { ConversationRepository } from '../onboarding-session/conversation.repository';
+import { ChatMessageRepository } from './chat-message.repository';
+import { HubSpotService } from '../hubspot/hubspot.service';
+import { formatNotePdfDownloaded } from '../hubspot/hubspot-note-format';
 
 const PDF_FONTS = {
   Roboto: {
@@ -25,17 +36,29 @@ const PDF_FONTS = {
 pdfmake.addFonts(PDF_FONTS);
 
 // PdfMake types - doc definition structure
-type PdfContent = Record<string, unknown> | string | (Record<string, unknown> | string)[];
+type PdfContent =
+  | Record<string, unknown>
+  | string
+  | (Record<string, unknown> | string)[];
 
 @Controller('generate-pdf')
+@UseGuards(OnboardingSessionGuard)
 export class PdfController {
+  constructor(
+    private readonly hubSpotService: HubSpotService,
+    private readonly sessionService: OnboardingSessionService,
+    private readonly conversationRepo: ConversationRepository,
+    private readonly chatMessageRepo: ChatMessageRepository,
+  ) {}
+
   @Post()
   async generatePdf(
     @Body() request: GeneratePdfRequestDto,
     @Res() res: Response,
+    @Req() req: Request,
   ) {
     try {
-      const { plan, userInfo, fullPlanText } = request;
+      const { plan, userInfo, fullPlanText, conversationId } = request;
 
       if (!plan || !userInfo) {
         throw new HttpException(
@@ -44,7 +67,11 @@ export class PdfController {
         );
       }
 
-      const pdfBuffer = await this.createPdfWithPdfMake(plan, userInfo, fullPlanText);
+      const pdfBuffer = await this.createPdfWithPdfMake(
+        plan,
+        userInfo,
+        fullPlanText,
+      );
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader(
@@ -52,6 +79,75 @@ export class PdfController {
         `attachment; filename="implementation-plan-${userInfo.company}.pdf"`,
       );
       res.send(pdfBuffer);
+
+      const session = getOnboardingSessionFromRequest(req);
+      await this.sessionService.updateOnboardingStage(
+        session.id,
+        'pdf_downloaded',
+      );
+      const now = new Date().toISOString();
+      await this.hubSpotService.updateContactProperties(userInfo.email, {
+        pdf_generated_at: now,
+        onboarding_stage: 'pdf_downloaded',
+        last_onboarding_activity_at: now,
+      });
+      const conv =
+        conversationId
+          ? await this.conversationRepo.findByIdAndSession(
+              conversationId,
+              session.id,
+            )
+          : null;
+      const conversationTitle = conv?.title ?? 'N/A';
+      const company = userInfo.company ?? 'N/A';
+      const hubSales =
+        plan.hub_sales ??
+        plan.modules?.some((m) => /sales/i.test(m.name)) ??
+        false;
+      const hubMarketing =
+        plan.hub_marketing ??
+        plan.modules?.some((m) => /marketing/i.test(m.name)) ??
+        false;
+      const hubService =
+        plan.hub_services ??
+        plan.modules?.some((m) => /service/i.test(m.name)) ??
+        false;
+      const hubs = [
+        hubSales && 'Sales Hub',
+        hubMarketing && 'Marketing Hub',
+        hubService && 'Service Hub',
+      ]
+        .filter(Boolean)
+        .join(', ');
+      const messages =
+        conv && conversationId
+          ? (
+              await this.chatMessageRepo.findByConversationId(conversationId)
+            ).map((m) => ({ role: m.role, content: m.content }))
+          : undefined;
+      const noteBody = formatNotePdfDownloaded({
+        conversationTitle,
+        company,
+        website: userInfo.website?.trim() || undefined,
+        hubs: hubs || undefined,
+        messages,
+      });
+      const hubspotNoteId = (conv as { hubspotNoteId?: string | null } | null)
+        ?.hubspotNoteId;
+      if (hubspotNoteId) {
+        await this.hubSpotService.updateNote(hubspotNoteId, noteBody);
+      } else {
+        const noteId = await this.hubSpotService.createNote(
+          userInfo.email,
+          noteBody,
+        );
+        if (noteId && conversationId) {
+          await this.conversationRepo.updateHubspotNoteId(
+            conversationId,
+            noteId,
+          );
+        }
+      }
     } catch (error) {
       console.error('Error generating PDF:', error);
       throw new HttpException(
@@ -63,7 +159,10 @@ export class PdfController {
 
   private preprocessPlanForPdf(md: string): string {
     let s = md;
-    s = s.replace(/\n#?\s*[A-Za-z0-9][A-Za-z0-9\s\-]*\s+Implementation\s+Plan\s*\n/gi, '\n');
+    s = s.replace(
+      /\n#?\s*[A-Za-z0-9][A-Za-z0-9\s\-]*\s+Implementation\s+Plan\s*\n/gi,
+      '\n',
+    );
     s = s.replace(/Let me know if this plan works for you[^.!]*[.!]\s*/gi, '');
     s = s.replace(/\b(SALES|MARKETING|SERVICE)\s+Hub\b/gi, '$1 HUB');
     // Remove redundant Objectives block (already shown in Summary as Main Implementation Goals)
@@ -80,7 +179,11 @@ export class PdfController {
 
   private parseHubsFromPlan(fullPlanText?: string): string[] {
     if (!fullPlanText) return [];
-    const matches = [...fullPlanText.matchAll(/##\s+(SALES\s+HUB|MARKETING\s+HUB|SERVICE\s+HUB)/gi)];
+    const matches = [
+      ...fullPlanText.matchAll(
+        /##\s+(SALES\s+HUB|MARKETING\s+HUB|SERVICE\s+HUB)/gi,
+      ),
+    ];
     const seen = new Set<string>();
     const hubs: string[] = [];
     for (const m of matches) {
@@ -97,16 +200,25 @@ export class PdfController {
     if (!fullPlanText) return [];
     const objectives: string[] = [];
     // Match "Need/Objective #N: text" or "**Need/Objective #N:** text"
-    const needMatches = [...fullPlanText.matchAll(/(?:\*\*)?Need\/Objective\s*#?\d+\s*(?:\*\*)?:?\s*([^\n*]+)/gi)];
+    const needMatches = [
+      ...fullPlanText.matchAll(
+        /(?:\*\*)?Need\/Objective\s*#?\d+\s*(?:\*\*)?:?\s*([^\n*]+)/gi,
+      ),
+    ];
     for (const m of needMatches) {
       const text = m[1].trim().replace(/\*\*/g, '');
       if (text.length > 2 && text.length < 200) objectives.push(text);
     }
     if (objectives.length > 0) return objectives;
     // Fallback: "main objectives... include [goal1, goal2, goal3]"
-    const includeMatch = fullPlanText.match(/objectives?\s+(?:you are looking to achieve[^.]*\.?\s*)?include\s*\[([^\]]+)\]/i);
+    const includeMatch = fullPlanText.match(
+      /objectives?\s+(?:you are looking to achieve[^.]*\.?\s*)?include\s*\[([^\]]+)\]/i,
+    );
     if (includeMatch) {
-      return includeMatch[1].split(',').map((s) => s.trim()).filter((s) => s.length > 2);
+      return includeMatch[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 2);
     }
     return [];
   }
@@ -179,15 +291,40 @@ export class PdfController {
     return content;
   }
 
-  private parseInlineFormatting(
-    text: string,
-  ): string | { text: string; bold?: boolean; link?: string; color?: string; decoration?: string } | (string | { text: string; bold?: boolean; link?: string; color?: string; decoration?: string })[] {
-    let s = text;
+  private parseInlineFormatting(text: string):
+    | string
+    | {
+        text: string;
+        bold?: boolean;
+        link?: string;
+        color?: string;
+        decoration?: string;
+      }
+    | (
+        | string
+        | {
+            text: string;
+            bold?: boolean;
+            link?: string;
+            color?: string;
+            decoration?: string;
+          }
+      )[] {
+    const s = text;
     // ** at start without closing ** -> bold rest of line
     if (s.startsWith('**') && !s.includes('**', 2)) {
       return { text: s.slice(2), bold: true };
     }
-    const result: (string | { text: string; bold?: boolean; link?: string; color?: string; decoration?: string })[] = [];
+    const result: (
+      | string
+      | {
+          text: string;
+          bold?: boolean;
+          link?: string;
+          color?: string;
+          decoration?: string;
+        }
+    )[] = [];
     let remaining = s;
 
     while (remaining.length > 0) {
@@ -222,7 +359,9 @@ export class PdfController {
       }
     }
 
-    return result.length === 1 && typeof result[0] === 'string' ? result[0] : result;
+    return result.length === 1 && typeof result[0] === 'string'
+      ? result[0]
+      : result;
   }
 
   private async createPdfWithPdfMake(
@@ -232,7 +371,9 @@ export class PdfController {
   ): Promise<Buffer> {
     const companyName = plan.company || userInfo.company || 'Your Company';
     const companyDomain = userInfo.website
-      ? (userInfo.website.startsWith('http') ? userInfo.website : `https://${userInfo.website}`)
+      ? userInfo.website.startsWith('http')
+        ? userInfo.website
+        : `https://${userInfo.website}`
       : undefined;
 
     const hubs = this.parseHubsFromPlan(fullPlanText);
@@ -245,7 +386,7 @@ export class PdfController {
       : this.fallbackPlanContent(plan);
 
     const fullDisclaimerText =
-      'This Implementation Plan has been generated with the assistance of artificial intelligence and is provided as a draft. Due to the nature of AI, it may contain errors, omissions, or inconsistencies. As outlined in the Terms and Conditions agreed to at the start of this service, Digifianz makes no guarantees regarding the accuracy or completeness of AI-generated outputs and shall not be liable for damages or issues resulting from reliance on them. The Client is solely responsible for reviewing and confirming the plan\'s suitability before implementation. Please note that you have already agreed to these Terms and Conditions prior to the creation of this plan.';
+      "This Implementation Plan has been generated with the assistance of artificial intelligence and is provided as a draft. Due to the nature of AI, it may contain errors, omissions, or inconsistencies. As outlined in the Terms and Conditions agreed to at the start of this service, Digifianz makes no guarantees regarding the accuracy or completeness of AI-generated outputs and shall not be liable for damages or issues resulting from reliance on them. The Client is solely responsible for reviewing and confirming the plan's suitability before implementation. Please note that you have already agreed to these Terms and Conditions prior to the creation of this plan.";
 
     const closingNoteText =
       'This plan was AI-assisted and may contain errors. As per the Terms and Conditions already agreed, the Client is responsible for reviewing and confirming its suitability.';
@@ -254,7 +395,8 @@ export class PdfController {
     const logoPath = path.join(process.cwd(), 'assets', 'digi-logo.png');
     try {
       if (fs.existsSync(logoPath)) {
-        logoBase64 = 'data:image/png;base64,' + fs.readFileSync(logoPath, 'base64');
+        logoBase64 =
+          'data:image/png;base64,' + fs.readFileSync(logoPath, 'base64');
       }
     } catch {
       // Logo opcional
@@ -277,7 +419,13 @@ export class PdfController {
                 alignment: 'left',
                 margin: [50, 0, 50, 0],
               },
-              { text: pageNumText, alignment: 'center' as const, fontSize: 9, color: '#9ca3af', margin: [0, 8, 0, 0] },
+              {
+                text: pageNumText,
+                alignment: 'center' as const,
+                fontSize: 9,
+                color: '#9ca3af',
+                margin: [0, 8, 0, 0],
+              },
             ],
           };
         }
@@ -292,7 +440,13 @@ export class PdfController {
               alignment: 'left',
               margin: [50, 0, 50, 0],
             },
-            { text: pageNumText, alignment: 'center' as const, fontSize: 9, color: '#9ca3af', margin: [0, 8, 0, 0] },
+            {
+              text: pageNumText,
+              alignment: 'center' as const,
+              fontSize: 9,
+              color: '#9ca3af',
+              margin: [0, 8, 0, 0],
+            },
           ],
         };
       },
@@ -312,14 +466,40 @@ export class PdfController {
         // Page 1: Cover
         ...(logoBase64
           ? [
-              { image: logoBase64, width: 220, alignment: 'center' as const, margin: [0, 40, 0, 40] },
+              {
+                image: logoBase64,
+                width: 220,
+                alignment: 'center' as const,
+                margin: [0, 40, 0, 40],
+              },
             ]
           : []),
-        { text: 'HubSpot Implementation Plan', style: 'coverTitle', alignment: 'center', margin: [0, logoBase64 ? 0 : 80, 0, 32] },
-        { text: 'AI-Assisted HubSpot Implementation for', style: 'coverSubtitle', alignment: 'center', margin: [0, 0, 0, 12] },
+        {
+          text: 'HubSpot Implementation Plan',
+          style: 'coverTitle',
+          alignment: 'center',
+          margin: [0, logoBase64 ? 0 : 80, 0, 32],
+        },
+        {
+          text: 'AI-Assisted HubSpot Implementation for',
+          style: 'coverSubtitle',
+          alignment: 'center',
+          margin: [0, 0, 0, 12],
+        },
         companyDomain
-          ? { text: companyName, style: 'coverCompany', alignment: 'center', margin: [0, 0, 0, 60], link: companyDomain }
-          : { text: companyName, style: 'coverCompany', alignment: 'center', margin: [0, 0, 0, 60] },
+          ? {
+              text: companyName,
+              style: 'coverCompany',
+              alignment: 'center',
+              margin: [0, 0, 0, 60],
+              link: companyDomain,
+            }
+          : {
+              text: companyName,
+              style: 'coverCompany',
+              alignment: 'center',
+              margin: [0, 0, 0, 60],
+            },
 
         { text: ' ', pageBreak: 'after' },
 
@@ -327,14 +507,24 @@ export class PdfController {
         { text: 'Summary:', style: 'mainSectionHeader', margin: [0, 0, 0, 8] },
         ...(hubsList
           ? [
-              { text: 'Hubs to be Implemented:', style: 'subHeader', margin: [0, 8, 0, 4] },
+              {
+                text: 'Hubs to be Implemented:',
+                style: 'subHeader',
+                margin: [0, 8, 0, 4],
+              },
               { text: hubsList, margin: [0, 0, 0, 12] },
             ]
           : []),
-        { text: 'Main Implementation Goals:', style: 'subHeader', margin: [0, 8, 0, 4] },
         {
-          ul: (plan.objectives?.length ? plan.objectives : this.parseObjectivesFromPlan(fullPlanText))
-            .map((o) => ({ text: o, margin: [0, 2] })),
+          text: 'Main Implementation Goals:',
+          style: 'subHeader',
+          margin: [0, 8, 0, 4],
+        },
+        {
+          ul: (plan.objectives?.length
+            ? plan.objectives
+            : this.parseObjectivesFromPlan(fullPlanText)
+          ).map((o) => ({ text: o, margin: [0, 2] })),
           margin: [0, 0, 0, 16],
           lineHeight: 1.4,
         },
@@ -345,7 +535,11 @@ export class PdfController {
           },
           margin: [0, 0, 0, 20],
         },
-        { text: 'The Implementation Plan:', style: 'mainSectionHeader', margin: [0, 8, 0, 8] },
+        {
+          text: 'The Implementation Plan:',
+          style: 'mainSectionHeader',
+          margin: [0, 8, 0, 8],
+        },
         ...planContent,
 
         // Resources + Next Steps
@@ -356,7 +550,11 @@ export class PdfController {
           },
           margin: [0, 0, 0, 20],
         },
-        { text: 'Resources:', style: 'mainSectionHeader', margin: [0, 8, 0, 8] },
+        {
+          text: 'Resources:',
+          style: 'mainSectionHeader',
+          margin: [0, 8, 0, 8],
+        },
         {
           text: 'Relevant HubSpot Knowledge Base articles and navigation paths are included in the plan above.',
           margin: [0, 0, 0, 16],
@@ -377,14 +575,18 @@ export class PdfController {
           margin: [0, 0, 0, 12],
         },
         {
-          text: 'Either way, you\'ll leave this process with the foundations in place and a clear path forward—ready to grow today and well into the future.',
+          text: "Either way, you'll leave this process with the foundations in place and a clear path forward—ready to grow today and well into the future.",
           margin: [0, 0, 0, 24],
         },
         { text: 'Need Help?', style: 'needHelp', margin: [0, 0, 0, 8] },
         {
           text: [
             'Feel free to send an email to ',
-            { text: 'help@digifianz.com', link: 'mailto:help@digifianz.com', color: '#2563eb' },
+            {
+              text: 'help@digifianz.com',
+              link: 'mailto:help@digifianz.com',
+              color: '#2563eb',
+            },
             ' at any time, and we would be happy to assist you with any questions you may have.',
           ],
           margin: [0, 0, 0, 32],
@@ -396,7 +598,9 @@ export class PdfController {
     return pdf.getBuffer();
   }
 
-  private fallbackPlanContent(plan: GeneratePdfRequestDto['plan']): PdfContent[] {
+  private fallbackPlanContent(
+    plan: GeneratePdfRequestDto['plan'],
+  ): PdfContent[] {
     const content: PdfContent[] = [
       { text: 'Objectives', style: 'subHeader', margin: [0, 0, 0, 8] },
       {

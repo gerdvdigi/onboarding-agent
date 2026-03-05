@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -177,7 +176,8 @@ function normalizeMarkdown(content: string): string {
   return normalized;
 }
 
-const components: Components = {
+function createComponents(isUserMessage: boolean): Components {
+  return {
   h1: ({ children }) => (
     <h1 className="mb-3 mt-4 text-xl font-bold leading-tight first:mt-0">
       {children}
@@ -200,7 +200,11 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary underline hover:opacity-80"
+      className={
+        isUserMessage
+          ? "text-primary-foreground underline underline-offset-2 hover:opacity-90"
+          : "text-primary underline underline-offset-2 hover:opacity-80"
+      }
     >
       {children}
     </a>
@@ -237,20 +241,22 @@ const components: Components = {
       {children}
     </pre>
   ),
-};
+  };
+}
 
 interface ChatMessageContentProps {
   content: string;
   className?: string;
+  isUserMessage?: boolean;
 }
 
 /**
  * Renders chat message content as rich Markdown (titles, bold, links, lists)
  * so it looks like a document instead of plain text.
  */
-export function ChatMessageContent({ content, className = "" }: ChatMessageContentProps) {
-  // Normalize the markdown to fix common LLM formatting issues
-  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
+export function ChatMessageContent({ content, className = "", isUserMessage = false }: ChatMessageContentProps) {
+  const normalizedContent = normalizeMarkdown(content);
+  const components = createComponents(isUserMessage);
 
   return (
     <div className={`chat-message-content ${className}`}>

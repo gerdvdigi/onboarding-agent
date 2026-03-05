@@ -1,4 +1,11 @@
-import { IsArray, IsBoolean, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsObject,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ImplementationPlan, UserInfo } from '../types/onboarding.types';
 
@@ -32,6 +39,18 @@ export class ImplementationPlanDto implements ImplementationPlan {
   @IsArray()
   @IsString({ each: true })
   recommendations: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  hub_sales?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hub_marketing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hub_services?: boolean;
 }
 
 export class UserInfoDto implements UserInfo {
@@ -67,4 +86,9 @@ export class GeneratePdfRequestDto {
   @IsOptional()
   @IsString()
   fullPlanText?: string;
+
+  /** ID de la conversación donde se aprobó el plan (para actualizar la Note en HubSpot). */
+  @IsOptional()
+  @IsString()
+  conversationId?: string;
 }

@@ -1,42 +1,106 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
-import { getApiBaseUrl } from "@/lib/config/api";
+import { getApiBaseUrl, defaultFetchOptions } from "@/lib/config/api";
 import type { ImplementationPlan } from "@/lib/langchain/agent";
 
 import { deriveContextFromMessages } from "@/lib/utils/derive-context-from-messages";
+import { getDiscoveryProgress } from "@/lib/utils/discovery-progress";
 import { ChatMessageContent } from "./ChatMessageContent";
+import { DiscoveryProgressBar } from "./DiscoveryProgressBar";
+import { MessageBubbleSkeleton } from "./MessageBubbleSkeleton";
+import { TypingIndicator } from "./TypingIndicator";
 
-export function ChatInterface() {
-  const { messages, addMessage, userInfo, context, updateContext } =
+interface ChatInterfaceProps {
+  conversationId: string;
+}
+
+export function ChatInterface({ conversationId }: ChatInterfaceProps) {
+  const router = useRouter();
+  const { messages, addMessage, setMessages, userInfo, updateContext } =
     useOnboardingStore();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [planDraft, setPlanDraft] = useState<ImplementationPlan | null>(null);
+  const [lastTokenUsage, setLastTokenUsage] = useState<{
+    openai: { promptTokens: number; completionTokens: number; totalTokens: number };
+    cohere: { inputTokens: number };
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const hasInitializedRef = useRef(false);
   const streamingCompleteRef = useRef(false);
   const finalStreamingContentRef = useRef<string>("");
   const isSendingRef = useRef(false);
   const streamingBufferRef = useRef<string>("");
   const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showChangesInput, setShowChangesInput] = useState(false);
+  const [changesInput, setChangesInput] = useState("");
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Auto-resize textarea (ChatGPT-style)
+  const adjustInputHeight = useCallback(() => {
+    const el = inputTextareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 200);
+    el.style.height = `${newHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustInputHeight();
+  }, [input, adjustInputHeight]);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamingContent]);
 
-  // Initial agent message - once when there are no messages
+  // Load conversation history from DB
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   useEffect(() => {
-    if (!hasInitializedRef.current && userInfo) {
+    setMessagesLoaded(false);
+    setMessages([]);
+    let cancelled = false;
+    const url = `${getApiBaseUrl()}/chat/messages?conversationId=${encodeURIComponent(conversationId)}`;
+    fetch(url, { ...defaultFetchOptions })
+      .then((res) => {
+        if (res.status === 404) {
+          router.replace("/onboarding/dashboard");
+          return null;
+        }
+        return res.ok ? res.json() : { messages: [] };
+      })
+      .then((data) => {
+        if (cancelled || data === null) return;
+        const list = Array.isArray(data.messages) ? data.messages : [];
+        if (list.length > 0) {
+          setMessages(
+            list.map((m: { role: string; content: string; timestamp?: string }) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              timestamp: m.timestamp ? new Date(m.timestamp) : undefined,
+            }))
+          );
+        }
+        setMessagesLoaded(true);
+      })
+      .catch(() => setMessagesLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, setMessages, router]);
+
+  // Initial agent message - once when there are no messages (after load from DB)
+  useEffect(() => {
+    if (!hasInitializedRef.current && userInfo && messagesLoaded) {
       const currentMessages = useOnboardingStore.getState().messages;
       if (currentMessages.length === 0) {
         hasInitializedRef.current = true;
@@ -51,7 +115,7 @@ export function ChatInterface() {
         }, 0);
       }
     }
-  }, [userInfo]);
+  }, [userInfo, messagesLoaded]);
 
   // Effect to add assistant message when streaming ends
   useEffect(() => {
@@ -63,9 +127,10 @@ export function ChatInterface() {
         finalStreamingContentRef.current = "";
 
         const currentMessages = useOnboardingStore.getState().messages;
-        const isDuplicate = currentMessages.some(
-          (msg) => msg.role === "assistant" && msg.content.trim() === contentToSave
-        );
+        // Solo evitar duplicado si el último mensaje ya es esta misma respuesta (evita doble add por re-render del effect)
+        const lastMsg = currentMessages[currentMessages.length - 1];
+        const isDuplicate =
+          lastMsg?.role === "assistant" && lastMsg.content.trim() === contentToSave;
 
         if (!isDuplicate) {
           addMessage("assistant", contentToSave);
@@ -78,6 +143,11 @@ export function ChatInterface() {
   const performChatRequest = useCallback(async () => {
     const state = useOnboardingStore.getState();
     const { messages: updatedMessages, context: ctx, userInfo: u } = state;
+
+    if (!u) {
+      console.warn("[Chat] userInfo is required; complete step 1 first.");
+      throw new Error("Please complete step 1 (basic info) before chatting.");
+    }
 
     // Send full conversation so the backend knows what was already asked and answered
     const seenMessages = new Set<string>();
@@ -116,7 +186,9 @@ export function ChatInterface() {
       const response = await fetch(`${getApiBaseUrl()}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
+          conversationId,
           messages: messagesToSend,
           userInfo: u,
           context: contextToSend,
@@ -194,6 +266,8 @@ export function ChatInterface() {
                   planDraft: data.plan,
                   planReady: true,
                 });
+              } else if (data.type === "token_usage" && data.usage) {
+                setLastTokenUsage(data.usage);
               } else if (data.type === "plan_check") {
                 updateContext({ planReady: data.ready });
               } else if (data.type === "end") {
@@ -257,12 +331,19 @@ export function ChatInterface() {
         );
       }, 0);
     }
-  }, [addMessage, updateContext]);
+  }, [conversationId, addMessage, updateContext]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading || isSendingRef.current) return;
 
     const userMessage = input.trim();
+    if (!userInfo) {
+      addMessage(
+        "assistant",
+        "Please complete step 1 (basic info) before chatting."
+      );
+      return;
+    }
 
     const currentMessages = useOnboardingStore.getState().messages;
     const lastMessage = currentMessages[currentMessages.length - 1];
@@ -277,27 +358,12 @@ export function ChatInterface() {
     isSendingRef.current = true;
     setInput("");
     addMessage("user", userMessage);
-    await performChatRequest();
-  }, [input, isLoading, addMessage, performChatRequest]);
-
-  const handleApprovePlan = () => {
-    if (planDraft) {
-      const messages = useOnboardingStore.getState().messages;
-      // Find the assistant message that contains the actual plan (has hub sections or plan structure)
-      const planMarkers = /##\s+(SALES|MARKETING|SERVICE)\s+HUB|#\s+.+\s+Implementation\s+Plan/i;
-      const assistantMessages = [...messages].filter((m) => m.role === "assistant");
-      const planMessage = [...assistantMessages].reverse().find(
-        (m) => m.content && planMarkers.test(m.content)
-      );
-      const fullPlanText = (planMessage?.content ?? assistantMessages.at(-1)?.content ?? "").trim() || null;
-      useOnboardingStore.getState().setApprovedPlan(planDraft, fullPlanText);
-      useOnboardingStore.getState().setCurrentStep(3);
-      window.location.href = "/onboarding/step-3";
+    try {
+      await performChatRequest();
+    } finally {
+      isSendingRef.current = false;
     }
-  };
-
-  const [showChangesInput, setShowChangesInput] = useState(false);
-  const [changesInput, setChangesInput] = useState("");
+  }, [input, isLoading, userInfo, addMessage, performChatRequest]);
 
   const handleRequestChanges = useCallback(() => {
     setShowChangesInput(true);
@@ -305,7 +371,6 @@ export function ChatInterface() {
 
   const handleSubmitChanges = useCallback(() => {
     if (!changesInput.trim()) return;
-    
     setPlanDraft(null);
     setShowChangesInput(false);
     updateContext({ step: "plan-review", planReady: true });
@@ -317,9 +382,63 @@ export function ChatInterface() {
     performChatRequest();
   }, [changesInput, addMessage, updateContext, performChatRequest]);
 
+  const handleApprovePlan = async () => {
+    if (!planDraft) return;
+    const state = useOnboardingStore.getState();
+    const messages = state.messages;
+    const ctx = state.context;
+    const derived = deriveContextFromMessages(
+      messages.map((m) => ({ role: m.role, content: m.content }))
+    );
+    const answersCollected =
+      Object.keys(derived.answersCollected).length > 0
+        ? derived.answersCollected
+        : ctx.answersCollected;
+    const { percentage } = getDiscoveryProgress(
+      messages.map((m) => ({ role: m.role, content: m.content }))
+    );
+    const planMarkers = /##\s+(SALES|MARKETING|SERVICE)\s+HUB|#\s+.+\s+Implementation\s+Plan/i;
+    const assistantMessages = [...messages].filter((m) => m.role === "assistant");
+    const planMessage = [...assistantMessages].reverse().find(
+      (m) => m.content && planMarkers.test(m.content)
+    );
+    const fullPlanText = (planMessage?.content ?? assistantMessages.at(-1)?.content ?? "").trim() || null;
+    try {
+      await fetch(`${getApiBaseUrl()}/onboarding/plan-approved`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: planDraft,
+          conversationId,
+          answersCollected: Object.keys(answersCollected).length > 0 ? answersCollected : undefined,
+          discoveryPercentage: percentage,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+    } catch {
+      // No bloquear navegación si falla la sincronización con HubSpot
+    }
+    useOnboardingStore.getState().setApprovedPlan(planDraft, fullPlanText, conversationId);
+    useOnboardingStore.getState().setCurrentStep(3);
+    window.location.href = "/onboarding/step-3";
+  };
+
   return (
     <div className="flex h-full flex-col">
+      <DiscoveryProgressBar
+        messages={messages}
+        hidden={!!planDraft}
+      />
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {!messagesLoaded ? (
+          <>
+            <MessageBubbleSkeleton role="assistant" lines={3} />
+            <MessageBubbleSkeleton role="user" lines={2} />
+            <MessageBubbleSkeleton role="assistant" lines={2} />
+          </>
+        ) : (
+          <>
         {messages.map((msg, idx) => (
           <div
             key={idx}
@@ -334,7 +453,7 @@ export function ChatInterface() {
                   : "bg-muted"
               }`}
             >
-              <ChatMessageContent content={msg.content} />
+              <ChatMessageContent content={msg.content} isUserMessage={msg.role === "user"} />
             </div>
           </div>
         ))}
@@ -342,7 +461,7 @@ export function ChatInterface() {
         {streamingContent && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-lg bg-muted px-4 py-2">
-              <ChatMessageContent content={streamingContent} />
+              <ChatMessageContent content={streamingContent} isUserMessage={false} />
             </div>
           </div>
         )}
@@ -355,7 +474,8 @@ export function ChatInterface() {
             <Button
               onClick={handleRequestChanges}
               disabled={isLoading}
-              className="flex-1 border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+              variant="outline"
+              className="flex-1"
             >
               ✏️ Request Changes
             </Button>
@@ -363,13 +483,13 @@ export function ChatInterface() {
         )}
 
         {showChangesInput && (
-          <div className="space-y-3 rounded-lg border bg-muted/50 p-4">
+          <div className="space-y-3 rounded-xl border border-border bg-section-bg/50 p-4">
             <p className="text-sm font-medium">What would you like to change?</p>
             <textarea
               value={changesInput}
               onChange={(e) => setChangesInput(e.target.value)}
               placeholder="E.g., Add more automation workflows, change pipeline stages, include Service Hub..."
-              className="w-full min-h-[80px] rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-success/50 focus:ring-offset-1 focus:border-success/60"
               disabled={isLoading}
             />
             <div className="flex gap-2">
@@ -394,25 +514,35 @@ export function ChatInterface() {
           </div>
         )}
 
-        {isLoading && !streamingContent && (
-          <div className="flex justify-start">
-            <div className="rounded-lg bg-muted px-4 py-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
-          </div>
-        )}
+        {isLoading && !streamingContent && <TypingIndicator />}
 
         <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
-      <div className="border-t p-4">
-        <div className="flex gap-2">
-          <Input
+      <div className="bg-background/60 backdrop-blur-md p-4">
+        {lastTokenUsage && (
+          <div className="mb-2 text-xs text-muted-foreground">
+            Tokens: OpenAI {lastTokenUsage.openai.promptTokens} prompt + {lastTokenUsage.openai.completionTokens} completion
+            {lastTokenUsage.cohere.inputTokens > 0 && ` • Cohere ~${lastTokenUsage.cohere.inputTokens} (est.)`}
+          </div>
+        )}
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={inputTextareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Type your message..."
             disabled={isLoading}
+            rows={1}
+            className="flex min-h-[44px] max-h-[200px] w-full resize-none rounded-md border border-input bg-background px-3 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-success/50 focus-visible:ring-offset-1 focus-visible:border-success/60 disabled:cursor-not-allowed disabled:opacity-50 overflow-y-auto"
           />
           <Button onClick={handleSend} disabled={isLoading || !input.trim()}>
             {isLoading ? (

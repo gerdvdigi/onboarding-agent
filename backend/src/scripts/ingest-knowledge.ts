@@ -114,8 +114,12 @@ async function run() {
   const filePath = path.resolve(process.cwd(), expandedPath);
   if (!fs.existsSync(filePath)) {
     console.error(`❌ File not found: ${filePath}`);
-    console.error('\n   Tip: Paths are relative to the backend folder. For your user Downloads use:');
-    console.error('   pnpm run ingest-knowledge ~/Downloads/ImplementationPlanExampleFormat.md');
+    console.error(
+      '\n   Tip: Paths are relative to the backend folder. For your user Downloads use:',
+    );
+    console.error(
+      '   pnpm run ingest-knowledge ~/Downloads/ImplementationPlanExampleFormat.md',
+    );
     process.exit(1);
   }
 
@@ -129,10 +133,14 @@ async function run() {
 
   const content = processContent(filePath, rawContent);
   const chunks = chunkText(content, CHUNK_SIZE, CHUNK_OVERLAP);
-  console.log(`✅ Split into ${chunks.length} chunks (size ${CHUNK_SIZE}, overlap ${CHUNK_OVERLAP}).\n`);
+  console.log(
+    `✅ Split into ${chunks.length} chunks (size ${CHUNK_SIZE}, overlap ${CHUNK_OVERLAP}).\n`,
+  );
 
   const fileName = path.basename(filePath, path.extname(filePath));
-  const guideTitle = fileName.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const guideTitle = fileName
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
   const documents: Document[] = chunks.map((pageContent, i) => {
     return new Document({
@@ -150,7 +158,9 @@ async function run() {
 
   const store = await getPineconeStore();
   if (!store) {
-    console.error('❌ Pinecone not available. Set PINECONE_API_KEY and COHERE_API_KEY in .env');
+    console.error(
+      '❌ Pinecone not available. Set PINECONE_API_KEY and COHERE_API_KEY in .env',
+    );
     process.exit(1);
   }
 

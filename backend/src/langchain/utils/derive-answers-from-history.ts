@@ -22,88 +22,88 @@ const TOPIC_PATTERNS: Record<string, string[]> = {
   // STEP 1: Company info
   company_info: [
     "company's website",
-    "domain",
-    "business name",
-    "what your business does",
-    "what i understand about your business",
-    "is this correct",
+    'domain',
+    'business name',
+    'what your business does',
+    'what i understand about your business',
+    'is this correct',
     "let's get started",
     "hi! let's get started",
   ],
 
   // STEP 2: Hubs
   hubs_included: [
-    "hubspot hubs",
-    "marketing, sales, service",
-    "which main hubspot hubs",
-    "planning to implement",
-    "hubs are you",
+    'hubspot hubs',
+    'marketing, sales, service',
+    'which main hubspot hubs',
+    'planning to implement',
+    'hubs are you',
   ],
 
   // STEP 3: Subscription levels
   subscription_levels: [
-    "subscription level",
-    "free, starter, professional, enterprise",
-    "what subscription level",
-    "hubs purchased",
-    "not planning to implement right now",
+    'subscription level',
+    'free, starter, professional, enterprise',
+    'what subscription level',
+    'hubs purchased',
+    'not planning to implement right now',
   ],
 
   // STEP 4: Overall goals
   overall_goals: [
-    "main goals with hubspot",
-    "goals with hubspot",
-    "what are your main goals",
-    "organize your sales",
-    "send better emails",
-    "improve reporting",
-    "reduce manual work",
+    'main goals with hubspot',
+    'goals with hubspot',
+    'what are your main goals',
+    'organize your sales',
+    'send better emails',
+    'improve reporting',
+    'reduce manual work',
   ],
 
   // STEP 5: Hub-specific goals (general)
   hub_specific_goals: [
-    "specific features",
-    "goals you have in mind",
-    "excited to use",
+    'specific features',
+    'goals you have in mind',
+    'excited to use',
     "for each hub you're implementing",
   ],
 
   // STEP 6A: Sales process
   sales_process: [
     "let's talk sales",
-    "who do you sell to",
-    "sales team get their leads",
-    "more than one sales team",
-    "more than one sales process",
-    "when is a deal created",
-    "key steps your team takes",
+    'who do you sell to',
+    'sales team get their leads',
+    'more than one sales team',
+    'more than one sales process',
+    'when is a deal created',
+    'key steps your team takes',
     "what defines a 'won' deal",
-    "pieces of info you always need to collect",
-    "repetitive tasks",
-    "like to automate",
+    'pieces of info you always need to collect',
+    'repetitive tasks',
+    'like to automate',
   ],
 
   // STEP 6B: Service process
   service_process: [
     "let's talk service",
-    "service processes",
-    "when should a ticket be created",
-    "main steps each ticket",
-    "knowledge base",
-    "surveys",
-    "customer satisfaction",
+    'service processes',
+    'when should a ticket be created',
+    'main steps each ticket',
+    'knowledge base',
+    'surveys',
+    'customer satisfaction',
   ],
 
   // STEP 6C: Marketing process
   marketing_process: [
     "let's talk about your audience",
-    "kinds of people or companies",
-    "good lead for your business",
-    "how are people finding you",
-    "stay in touch or promote",
-    "marketing campaigns",
-    "content hub",
-    "welcome email",
+    'kinds of people or companies',
+    'good lead for your business',
+    'how are people finding you',
+    'stay in touch or promote',
+    'marketing campaigns',
+    'content hub',
+    'welcome email',
   ],
 };
 
@@ -135,7 +135,9 @@ function detectTopic(questionContent: string): string | null {
  * Derives answersCollected and questionsAsked from the message history.
  * For hub_specific_details, it accumulates all answers from sales/service/marketing process questions.
  */
-export function deriveAnswersFromHistory(messages: MessageLike[]): DerivedContext {
+export function deriveAnswersFromHistory(
+  messages: MessageLike[],
+): DerivedContext {
   const rawAnswers: Record<string, string[]> = {};
   const questionsAsked: string[] = [];
 
@@ -151,7 +153,15 @@ export function deriveAnswersFromHistory(messages: MessageLike[]): DerivedContex
     if (!question || !answer) continue;
 
     // Skip very short answers that don't add value (e.g., "yes", "ok")
-    const isShortConfirmation = answer.length < 10 && /^(yes|no|ok|okay|sure|correct|yep|nope|si|sí)$/i.test(answer.trim());
+    const isShortConfirmation =
+      answer.length < 10 &&
+      /^(yes|no|ok|okay|sure|correct|yep|nope|si|sí)$/i.test(answer.trim());
+    // Rejection / non-choice answers that must not be stored as hub choice or company info
+    const isNonChoice =
+      answer.length < 15 &&
+      /^(no|nope|nop|why\??|idk|dunno|maybe|not sure|ajam|mmm)$/i.test(
+        answer.trim(),
+      );
 
     const topic = detectTopic(question);
     if (topic) {
@@ -159,8 +169,20 @@ export function deriveAnswersFromHistory(messages: MessageLike[]): DerivedContex
 
       // For company_info, we want the actual company description, not just "yes"
       // If the question is "is this correct?" and answer is just "yes", skip storing
-      if (pillar === 'company_info' && question.toLowerCase().includes('is this correct') && isShortConfirmation) {
+      if (
+        pillar === 'company_info' &&
+        question.toLowerCase().includes('is this correct') &&
+        isShortConfirmation
+      ) {
         // Don't overwrite company_info with just "yes"
+      } else if (
+        pillar === 'company_info' &&
+        isShortConfirmation &&
+        !question.toLowerCase().includes('is this correct')
+      ) {
+        // First question (website/name): do not store "si", "no", "ok" as company_info
+      } else if (pillar === 'hubs_included' && isNonChoice) {
+        // Do not store "no", "nope", "why?", etc. as hubs_included
       } else if (!isShortConfirmation || pillar !== 'company_info') {
         if (!rawAnswers[pillar]) {
           rawAnswers[pillar] = [];
@@ -173,8 +195,13 @@ export function deriveAnswersFromHistory(messages: MessageLike[]): DerivedContex
     }
 
     // Track questions asked
-    const shortened = question.length > 120 ? question.slice(0, 120).trim() + '…' : question;
-    if (!questionsAsked.some((q) => q === shortened || q.startsWith(shortened.slice(0, 50)))) {
+    const shortened =
+      question.length > 120 ? question.slice(0, 120).trim() + '…' : question;
+    if (
+      !questionsAsked.some(
+        (q) => q === shortened || q.startsWith(shortened.slice(0, 50)),
+      )
+    ) {
       questionsAsked.push(shortened);
     }
   }

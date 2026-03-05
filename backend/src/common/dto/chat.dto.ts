@@ -38,13 +38,17 @@ export class UserInfoDto implements UserInfo {
 }
 
 export class ChatRequestDto {
+  @IsString()
+  conversationId: string;
+
   @IsArray()
   @Type(() => MessageDto)
   messages: MessageDto[];
 
+  @IsOptional()
   @ValidateNested()
   @Type(() => UserInfoDto)
-  userInfo: UserInfoDto;
+  userInfo?: UserInfoDto;
 
   @IsObject()
   @IsOptional()

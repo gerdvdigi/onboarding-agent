@@ -113,7 +113,11 @@ export class PineconeService implements OnModuleInit {
       'text-embedding-ada-002';
 
     const dimension = modelName.includes('large') ? 3072 : 1536;
-    this.embeddingConfig = { provider: 'openai', dimensions: dimension, modelName };
+    this.embeddingConfig = {
+      provider: 'openai',
+      dimensions: dimension,
+      modelName,
+    };
 
     return new OpenAIEmbeddings({
       openAIApiKey: apiKey,
@@ -184,7 +188,8 @@ export class PineconeService implements OnModuleInit {
     }
 
     const baseUrl =
-      this.configService.get<string>('OLLAMA_BASE_URL') || 'http://localhost:11434';
+      this.configService.get<string>('OLLAMA_BASE_URL') ||
+      'http://localhost:11434';
     const modelName =
       this.configService.get<string>('OLLAMA_MODEL') || 'nomic-embed-text';
 
@@ -214,9 +219,7 @@ export class PineconeService implements OnModuleInit {
       this.configService.get<string>('VOYAGE_API_KEY') ||
       this.configService.get<string>('VOYAGEAI_API_KEY');
     if (!apiKey) {
-      throw new Error(
-        'VOYAGE_API_KEY o VOYAGEAI_API_KEY no configurada',
-      );
+      throw new Error('VOYAGE_API_KEY o VOYAGEAI_API_KEY no configurada');
     }
 
     const modelName =
@@ -263,9 +266,12 @@ export class PineconeService implements OnModuleInit {
       await this.ensureIndexExists();
 
       // Inicializar el vector store
-      this.vectorStore = await PineconeStore.fromExistingIndex(this.embeddings, {
-        pineconeIndex: this.pineconeClient.index(this.indexName),
-      });
+      this.vectorStore = await PineconeStore.fromExistingIndex(
+        this.embeddings,
+        {
+          pineconeIndex: this.pineconeClient.index(this.indexName),
+        },
+      );
 
       this.logger.log(
         `Pinecone inicializado correctamente. Índice: ${this.indexName}`,
@@ -274,7 +280,10 @@ export class PineconeService implements OnModuleInit {
         `Proveedor de embeddings: ${this.embeddingConfig.provider} (${this.embeddingConfig.dimensions} dimensiones)`,
       );
     } catch (error) {
-      this.logger.error(`Error al inicializar Pinecone: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error al inicializar Pinecone: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -283,7 +292,9 @@ export class PineconeService implements OnModuleInit {
     if (!this.pineconeClient) return;
 
     const indexes = await this.pineconeClient.listIndexes();
-    const indexExists = indexes.indexes?.some((idx) => idx.name === this.indexName);
+    const indexExists = indexes.indexes?.some(
+      (idx) => idx.name === this.indexName,
+    );
 
     if (!indexExists) {
       this.logger.log(`Creando índice Pinecone: ${this.indexName}`);
@@ -329,7 +340,9 @@ export class PineconeService implements OnModuleInit {
    */
   getVectorStore(): PineconeStore {
     if (!this.vectorStore) {
-      throw new Error('Pinecone no está inicializado. Verifica PINECONE_API_KEY.');
+      throw new Error(
+        'Pinecone no está inicializado. Verifica PINECONE_API_KEY.',
+      );
     }
     return this.vectorStore;
   }

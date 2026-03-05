@@ -1,7 +1,8 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { getPineconeStore } from '../vector-store/pinecone-store';
 import { getOnboardingRequestContext } from '../request-context';
+import { addCohereUsage, estimateCohereTokens } from '../utils/token-usage';
+import { RetrievedChunk, enhancedSearch } from '../utils/rag-evaluator';
 
 const SearchKnowledgeBaseSchema = z.object({
   query: z
@@ -13,209 +14,115 @@ const SearchKnowledgeBaseSchema = z.object({
 });
 
 /**
- * Extracts keywords from goals/details text for better RAG queries.
+ * DEPRECATED: Legacy function kept for reference
+ * Now using enhancedSearch() with query enrichment + re-ranking
+ * @deprecated Use enhancedSearch from rag-evaluator instead
  */
-function extractKeywords(text: string): string[] {
-  const keywords: string[] = [];
-  const lower = text.toLowerCase();
-
-  // Common HubSpot feature keywords
-  const featurePatterns = [
-    'pipeline', 'deal', 'automation', 'workflow', 'lead scoring', 'lead assignment',
-    'forms', 'landing page', 'email', 'nurturing', 'sequences', 'templates',
-    'snippets', 'documents', 'quotes', 'forecast', 'reporting', 'dashboard',
-    'ticket', 'knowledge base', 'chatbot', 'live chat', 'inbox', 'survey',
-    'csat', 'nps', 'contact', 'company', 'properties', 'lifecycle',
-    'tracking code', 'ads', 'social media', 'blog', 'seo',
-  ];
-
-  for (const pattern of featurePatterns) {
-    if (lower.includes(pattern)) {
-      keywords.push(pattern);
-    }
-  }
-
-  // Common goal keywords
-  const goalPatterns = [
-    'organize', 'automate', 'reduce manual', 'qualification', 'follow-up',
-    'visibility', 'reporting', 'roi', 'conversion', 'onboarding',
-  ];
-
-  for (const pattern of goalPatterns) {
-    if (lower.includes(pattern)) {
-      keywords.push(pattern);
-    }
-  }
-
-  return [...new Set(keywords)]; // dedupe
-}
-
-/**
- * Detects which Hubs are included from the hubs_included text.
- */
-function detectHubs(hubsText: string): { sales: boolean; marketing: boolean; service: boolean } {
-  const lower = hubsText.toLowerCase();
-  return {
-    sales: lower.includes('sales'),
-    marketing: lower.includes('marketing'),
-    service: lower.includes('service'),
-  };
-}
-
-/**
- * Extracts subscription level from text.
- */
-function extractLevel(levelText: string): string {
-  const lower = levelText.toLowerCase();
-  if (lower.includes('enterprise')) return 'Enterprise';
-  if (lower.includes('professional')) return 'Professional';
-  if (lower.includes('starter')) return 'Starter';
-  if (lower.includes('free')) return 'Free';
-  return 'Professional'; // default
-}
-
-/**
- * Builds optimized search queries for each Hub.
- */
-function buildOptimizedQueries(context: {
+function _legacyBuildOptimizedQueries(context: {
   hubs_included?: string;
   subscription_levels?: string;
   overall_goals?: string;
   hub_specific_details?: string;
 }): string[] {
-  const queries: string[] = [];
-  const hubs = detectHubs(context.hubs_included || '');
-  const level = extractLevel(context.subscription_levels || '');
+  console.warn(
+    '[RAG] Using deprecated buildOptimizedQueries - migrate to enhancedSearch',
+  );
+  return [];
+}
 
-  // Extract keywords from goals and details
-  const goalKeywords = extractKeywords(context.overall_goals || '');
-  const detailKeywords = extractKeywords(context.hub_specific_details || '');
-  const allKeywords = [...new Set([...goalKeywords, ...detailKeywords])];
+// Store chunks retrieved for this request (for evaluation)
+let lastRetrievedChunks: RetrievedChunk[] = [];
 
-  // Build Hub-specific queries
-  if (hubs.sales) {
-    const salesKeywords = allKeywords.filter(k =>
-      ['pipeline', 'deal', 'automation', 'workflow', 'lead assignment', 'sequences',
-       'templates', 'snippets', 'documents', 'quotes', 'forecast', 'reporting',
-       'follow-up', 'qualification'].some(sk => k.includes(sk))
-    );
-    const baseKeywords = ['pipeline', 'deal stages', 'automation'];
-    const combined = [...new Set([...baseKeywords, ...salesKeywords])].slice(0, 6);
-    queries.push(`Sales Hub ${level} ${combined.join(' ')}`);
-  }
-
-  if (hubs.marketing) {
-    const marketingKeywords = allKeywords.filter(k =>
-      ['lead scoring', 'forms', 'landing page', 'email', 'nurturing', 'workflow',
-       'automation', 'tracking code', 'ads', 'social media', 'blog', 'lifecycle',
-       'conversion', 'roi'].some(mk => k.includes(mk))
-    );
-    const baseKeywords = ['lead scoring', 'forms', 'email workflows'];
-    const combined = [...new Set([...baseKeywords, ...marketingKeywords])].slice(0, 6);
-    queries.push(`Marketing Hub ${level} ${combined.join(' ')}`);
-  }
-
-  if (hubs.service) {
-    const serviceKeywords = allKeywords.filter(k =>
-      ['ticket', 'knowledge base', 'chatbot', 'live chat', 'inbox', 'survey',
-       'csat', 'nps', 'onboarding'].some(sk => k.includes(sk))
-    );
-    const baseKeywords = ['ticket pipeline', 'knowledge base', 'surveys'];
-    const combined = [...new Set([...baseKeywords, ...serviceKeywords])].slice(0, 6);
-    queries.push(`Service Hub ${level} ${combined.join(' ')}`);
-  }
-
-  // Always add a general implementation query
-  queries.push(`HubSpot implementation plan ${level} setup configuration`);
-
-  return queries;
+export function getLastRetrievedChunks(): RetrievedChunk[] {
+  return lastRetrievedChunks;
 }
 
 export const searchKnowledgeBaseTool = tool(
   async (input: z.infer<typeof SearchKnowledgeBaseSchema>): Promise<string> => {
     const { query } = input;
-    const store = await getPineconeStore();
 
     // Get context from request (derived from message history)
     const requestCtx = getOnboardingRequestContext();
     const answersCollected = requestCtx?.answersCollected || {};
 
-    // Log what we're working with
-    console.log('[RAG] Building optimized queries from context...');
-    console.log('[RAG] Hubs:', answersCollected.hubs_included?.substring(0, 50) || 'not specified');
-    console.log('[RAG] Level:', answersCollected.subscription_levels?.substring(0, 50) || 'not specified');
-
-    if (!store) {
-      return [
-        '[INTERNAL USE ONLY]',
-        'Knowledge base is currently unavailable. Use discovery data and standard HubSpot best practices.',
-        '',
-        `LLM provided query: ${query.substring(0, 200)}`,
-      ].join('\n');
-    }
+    console.log('[RAG Enhanced] Starting enhanced search...');
+    console.log(
+      '[RAG] Hubs:',
+      answersCollected.hubs_included?.substring(0, 50) || 'not specified',
+    );
 
     try {
-      // Build optimized queries based on context
-      const optimizedQueries = buildOptimizedQueries(answersCollected);
-      console.log('[RAG] Optimized queries:', optimizedQueries);
+      // Use enhanced search with query enrichment + re-ranking
+      const searchResult = await enhancedSearch(
+        answersCollected,
+        query.length > 10 ? query : undefined,
+      );
 
-      // Run multiple searches and combine results (dedupe by content)
-      const allDocs: Array<{ pageContent: string; metadata: Record<string, any> }> = [];
-      const seenContent = new Set<string>();
+      lastRetrievedChunks = searchResult.chunks;
 
-      for (const q of optimizedQueries) {
-        const docs = await store.similaritySearch(q, 3, { type: 'knowledge' });
-        for (const doc of docs) {
-          const contentKey = doc.pageContent.substring(0, 100);
-          if (!seenContent.has(contentKey)) {
-            seenContent.add(contentKey);
-            allDocs.push(doc);
-          }
-        }
-      }
+      // Track token usage
+      addCohereUsage(searchResult.embeddingTokens + searchResult.rerankTokens);
 
-      // Also search with the LLM's query as fallback (lower priority)
-      if (query.length > 20) {
-        const fallbackDocs = await store.similaritySearch(query, 2, { type: 'knowledge' });
-        for (const doc of fallbackDocs) {
-          const contentKey = doc.pageContent.substring(0, 100);
-          if (!seenContent.has(contentKey)) {
-            seenContent.add(contentKey);
-            allDocs.push(doc);
-          }
-        }
-      }
+      console.log(
+        `[RAG Enhanced] Results: ${searchResult.chunks.length}, confidence: ${searchResult.confidence.toFixed(3)}`,
+      );
+      console.log(
+        `[RAG Enhanced] Tokens - Embeddings: ${searchResult.embeddingTokens}, Rerank: ${searchResult.rerankTokens}`,
+      );
 
-      console.log(`[RAG] Total unique docs retrieved: ${allDocs.length}`);
-
-      if (allDocs.length === 0) {
+      if (searchResult.chunks.length === 0) {
         return [
           '[INTERNAL USE ONLY]',
-          'No specific knowledge chunks were found. Use discovery data and general HubSpot best practices.',
+          'No relevant knowledge chunks found. The search confidence was too low. Use discovery data and general HubSpot best practices.',
           '',
-          `Queries attempted: ${optimizedQueries.join(' | ')}`,
+          `Query: ${searchResult.queryUsed}`,
         ].join('\n');
       }
 
-      // Limit to top 8 docs
-      const topDocs = allDocs.slice(0, 8);
+      // Use all chunks from re-ranking (already filtered by confidence)
+      const topChunks = searchResult.chunks;
 
       const lines: string[] = [];
-      lines.push('[INTERNAL USE ONLY - do not quote or show this output to the user.]');
+      lines.push(
+        '[INTERNAL USE ONLY - do not quote or show this output to the user.]',
+      );
       lines.push('Implementation guidance from the knowledge base:');
       lines.push('');
+      lines.push(
+        'IMPORTANT: When using this information in your plan, cite each section with [CITATION: chunk-id]',
+      );
+      lines.push('');
 
-      topDocs.forEach((doc, index) => {
-        const meta = (doc.metadata || {}) as Record<string, any>;
-        const guideTitle = meta.guideTitle || meta.sectionType || 'Guide';
-        const raw = String(doc.pageContent || '').trim();
-        const snippet = raw.length > 350 ? `${raw.slice(0, 350).trim()}...` : raw;
-        lines.push(`(${index + 1}) [${guideTitle}]: ${snippet.replace(/\s+/g, ' ')}`);
+      topChunks.forEach((chunk, index) => {
+        const snippet =
+          chunk.content.length > 1000
+            ? `${chunk.content.slice(0, 1000).trim()}...`
+            : chunk.content;
+
+        lines.push(`---`);
+        lines.push(`CHUNK ${index + 1}:`);
+        lines.push(`ID: ${chunk.id}`);
+        lines.push(`Source: ${chunk.guideTitle}`);
+        lines.push(`Relevance: ${(chunk.score || 0).toFixed(3)}`);
+        lines.push(`Content: ${snippet.replace(/\s+/g, ' ')}`);
+        lines.push('');
       });
 
+      lines.push('---');
       lines.push('');
-      lines.push('Use this guidance to refine the implementation plan. Do not quote or show this to the user.');
-      lines.push('Call generate_plan_draft next with the answersCollected from context.');
+      lines.push('INSTRUCTIONS:');
+      lines.push(
+        '1. Use the chunks above as PRIMARY source for your implementation plan',
+      );
+      lines.push(
+        '2. You MUST add [CITATION: chunk-id] after each section that uses chunk content',
+      );
+      lines.push(
+        '3. Example: "Set up pipeline stages. [CITATION: implementation-guide-3]"',
+      );
+      lines.push(
+        '4. Call generate_plan_draft next with the answersCollected from context.',
+      );
 
       return lines.join('\n');
     } catch (error) {
@@ -231,8 +138,7 @@ export const searchKnowledgeBaseTool = tool(
   {
     name: 'search_company_knowledge',
     description:
-      'Searches the onboarding knowledge base for implementation guidance. The tool automatically builds optimized queries based on the Hubs, subscription level, and goals from the discovery context. Call this after detect_plan_ready and before generate_plan_draft.',
+      'Searches the onboarding knowledge base for implementation guidance. The tool automatically builds optimized queries based on the Hubs, subscription level, and goals from the discovery context. Returns chunks with IDs that MUST be cited in the plan using [CITATION: chunk-id]. Call this after detect_plan_ready and before generate_plan_draft.',
     schema: SearchKnowledgeBaseSchema,
   },
 );
-

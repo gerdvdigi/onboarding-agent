@@ -7,9 +7,10 @@ interface OnboardingStore {
   userInfo: UserInfo | null;
   setUserInfo: (info: UserInfo) => void;
 
-  // Paso 2: Chat y descubrimiento
+  // Paso 2: Chat y descubrimiento (persistido en DB vía API, no en localStorage)
   messages: Array<{ role: "user" | "assistant"; content: string; timestamp: Date }>;
   addMessage: (role: "user" | "assistant", content: string) => void;
+  setMessages: (messages: Array<{ role: "user" | "assistant"; content: string; timestamp?: Date }>) => void;
   clearMessages: () => void;
 
   // Contexto del onboarding
@@ -20,7 +21,9 @@ interface OnboardingStore {
   approvedPlan: ImplementationPlan | null;
   /** Full plan text as shown in chat (Markdown). Used for PDF so it matches what the user saw. */
   approvedPlanFullText: string | null;
-  setApprovedPlan: (plan: ImplementationPlan, fullText?: string | null) => void;
+  /** ID de la conversación donde se aprobó (para actualizar Note en HubSpot al descargar PDF). */
+  approvedConversationId: string | null;
+  setApprovedPlan: (plan: ImplementationPlan, fullText?: string | null, conversationId?: string | null) => void;
 
   // Estado del flujo
   currentStep: 1 | 2 | 3;
@@ -51,6 +54,14 @@ export const useOnboardingStore = create<OnboardingStore>()(
         { role, content, timestamp: new Date() },
       ],
     })),
+  setMessages: (messages) =>
+    set({
+      messages: messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+      })),
+    }),
   clearMessages: () => set({ messages: [] }),
 
   context: initialContext,
@@ -61,8 +72,13 @@ export const useOnboardingStore = create<OnboardingStore>()(
 
   approvedPlan: null,
   approvedPlanFullText: null,
-  setApprovedPlan: (plan, fullText) =>
-    set({ approvedPlan: plan, approvedPlanFullText: fullText ?? null }),
+  approvedConversationId: null,
+  setApprovedPlan: (plan, fullText, conversationId) =>
+    set({
+      approvedPlan: plan,
+      approvedPlanFullText: fullText ?? null,
+      approvedConversationId: conversationId ?? null,
+    }),
 
   currentStep: 1,
   setCurrentStep: (step) => set({ currentStep: step }),
@@ -74,19 +90,20 @@ export const useOnboardingStore = create<OnboardingStore>()(
       context: initialContext,
       approvedPlan: null,
       approvedPlanFullText: null,
+      approvedConversationId: null,
       currentStep: 1,
     }),
     }),
     {
       name: "onboarding-storage",
-      // Only persist essential data, not the full message history
+      // Persist only non-chat data; messages are loaded from DB via GET /chat/messages
       partialize: (state) => ({
         userInfo: state.userInfo,
         approvedPlan: state.approvedPlan,
         approvedPlanFullText: state.approvedPlanFullText,
+        approvedConversationId: state.approvedConversationId,
         currentStep: state.currentStep,
         context: state.context,
-        messages: state.messages.slice(-20),
       }),
     }
   )
