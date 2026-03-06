@@ -27,8 +27,11 @@ export function OnboardingLanding() {
       done.current = true;
       fetch(`${getApiBaseUrl()}/onboarding/session/validate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         ...defaultFetchOptions,
+        headers: {
+          "Content-Type": "application/json",
+          ...(defaultFetchOptions.headers as Record<string, string>),
+        },
         body: JSON.stringify({ token: decodedToken }),
       })
         .then(async (res) => {

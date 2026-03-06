@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
-import { getApiBaseUrl } from "@/lib/config/api";
+import { getApiBaseUrl, defaultFetchOptions } from "@/lib/config/api";
 import { Download, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ImplementationPackages } from "./ImplementationPackages";
@@ -27,9 +27,10 @@ export function FinalizationStep() {
     try {
       const response = await fetch(`${getApiBaseUrl()}/generate-pdf`, {
         method: "POST",
-        credentials: "include",
+        ...defaultFetchOptions,
         headers: {
           "Content-Type": "application/json",
+          ...(defaultFetchOptions.headers as Record<string, string>),
         },
         body: JSON.stringify({
           plan: approvedPlan,

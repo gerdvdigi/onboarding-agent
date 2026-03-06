@@ -185,8 +185,11 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     try {
       const response = await fetch(`${getApiBaseUrl()}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        ...defaultFetchOptions,
+        headers: {
+          "Content-Type": "application/json",
+          ...(defaultFetchOptions.headers as Record<string, string>),
+        },
         body: JSON.stringify({
           conversationId,
           messages: messagesToSend,
@@ -406,8 +409,11 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     try {
       await fetch(`${getApiBaseUrl()}/onboarding/plan-approved`, {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        ...defaultFetchOptions,
+        headers: {
+          "Content-Type": "application/json",
+          ...(defaultFetchOptions.headers as Record<string, string>),
+        },
         body: JSON.stringify({
           plan: planDraft,
           conversationId,

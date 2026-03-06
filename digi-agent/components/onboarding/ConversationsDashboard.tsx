@@ -87,8 +87,11 @@ export function ConversationsDashboard({
     try {
       const res = await fetch(`${getApiBaseUrl()}/onboarding/conversations`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         ...defaultFetchOptions,
+        headers: {
+          "Content-Type": "application/json",
+          ...(defaultFetchOptions.headers as Record<string, string>),
+        },
         body: JSON.stringify({
           title: newConversationName.trim() || undefined,
         }),
