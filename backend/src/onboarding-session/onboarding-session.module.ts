@@ -4,22 +4,23 @@ import { ConversationsController } from './conversations.controller';
 import { OnboardingSessionService } from './onboarding-session.service';
 import { OnboardingSessionRepository } from './onboarding-session.repository';
 import { ConversationRepository } from './conversation.repository';
-import { OnboardingSessionGuard } from './onboarding-session.guard';
-import { MailModule } from '../mail/mail.module';
+import { ClerkSessionGuard } from './clerk-session.guard';
+import { ClerkAuthGuard } from './clerk-auth.guard';
 import { HubSpotModule } from '../hubspot/hubspot.module';
 
 @Module({
-  imports: [MailModule, HubSpotModule],
+  imports: [HubSpotModule],
   controllers: [OnboardingSessionController, ConversationsController],
   providers: [
     OnboardingSessionRepository,
     ConversationRepository,
     OnboardingSessionService,
-    OnboardingSessionGuard,
+    ClerkSessionGuard,
+    ClerkAuthGuard,
   ],
   exports: [
     OnboardingSessionService,
-    OnboardingSessionGuard,
+    ClerkSessionGuard,
     ConversationRepository,
   ],
 })

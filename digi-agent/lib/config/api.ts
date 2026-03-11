@@ -4,22 +4,24 @@
  * Trims trailing slashes to avoid double slashes in paths.
  */
 export function getApiBaseUrl(): string {
-  const url = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001";
-  return url.replace(/\/$/, "");
+  const url = process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:3001';
+  return url.replace(/\/$/, '');
 }
 
-import { getSessionHeaders } from '@/lib/api/get-session-header';
-
-/** Opciones por defecto para llamadas al backend: incluir cookies (sesión onboarding). */
-export function getDefaultFetchOptions(): RequestInit {
-  const sessionHeaders = getSessionHeaders();
+/**
+ * Opciones de fetch con Bearer token de Clerk.
+ * El backend usa el token para identificar al usuario y obtener la sesión de onboarding.
+ *
+ * @param getToken - Función de Clerk useAuth().getToken
+ */
+export async function getAuthFetchOptions(
+  getToken: () => Promise<string | null>,
+): Promise<RequestInit> {
+  const token = await getToken();
   return {
-    credentials: "include",
+    credentials: 'include',
     headers: {
-      ...sessionHeaders,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   };
 }
-
-/** Alias para compatibilidad. Incluye session headers para cross-domain. */
-export const defaultFetchOptions: RequestInit = getDefaultFetchOptions();

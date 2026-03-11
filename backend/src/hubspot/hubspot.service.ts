@@ -3,54 +3,6 @@ import { ConfigService } from '@nestjs/config';
 
 const HUBSPOT_API_BASE = 'https://api.hubspot.com';
 
-/** Valores internos que usamos en el código */
-export const ONBOARDING_STAGES = [
-  'form_sent',
-  'magic_link_used',
-  'discovery_started',
-  'plan_approved',
-  'pdf_downloaded',
-] as const;
-export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
-
-/** Valores que espera el dropdown en HubSpot (labels/opciones creadas en el portal) */
-const ONBOARDING_STAGE_TO_HUBSPOT: Record<OnboardingStage, string> = {
-  form_sent: 'Form Sent',
-  magic_link_used: 'Magic Link Used',
-  discovery_started: 'Discovery Started',
-  plan_approved: 'Plan Approved',
-  pdf_downloaded: 'Pdf Downloaded',
-};
-
-/** Mapeo inverso: valor de HubSpot → valor interno */
-const HUBSPOT_TO_ONBOARDING_STAGE: Record<string, OnboardingStage> =
-  Object.fromEntries(
-    Object.entries(ONBOARDING_STAGE_TO_HUBSPOT).map(([k, v]) => [
-      v,
-      k as OnboardingStage,
-    ]),
-  );
-
-/** Stages que indican que el plan ya fue aprobado (no puede volver a step-1 ni step-2) */
-export const STAGES_BEYOND_DISCOVERY: OnboardingStage[] = [
-  'plan_approved',
-  'pdf_downloaded',
-];
-
-export function isStageBeyondDiscovery(
-  stage: string | null | undefined,
-): boolean {
-  return (
-    stage != null && STAGES_BEYOND_DISCOVERY.includes(stage as OnboardingStage)
-  );
-}
-
-export function hubSpotStageToInternal(
-  hubSpotValue: string | null | undefined,
-): OnboardingStage | null {
-  if (!hubSpotValue || typeof hubSpotValue !== 'string') return null;
-  return HUBSPOT_TO_ONBOARDING_STAGE[hubSpotValue.trim()] ?? null;
-}
 
 /** HubSpot propiedades "Date" exigen medianoche UTC; devuelve ms desde epoch para hoy 00:00:00 UTC */
 function toHubSpotDateAtMidnightUtc(d: Date = new Date()): number {
@@ -61,10 +13,6 @@ export interface HubSpotContactInput {
   email: string;
   firstname: string;
   lastname: string;
-  company?: string;
-  website?: string;
-  /** Si se pasa, se incluye en el upsert inicial (ej. form_sent) */
-  onboarding_stage?: OnboardingStage;
 }
 
 /**
@@ -134,20 +82,11 @@ export class HubSpotService {
       firstname: input.firstname,
       lastname: input.lastname,
     };
-    if (input.company != null && input.company.trim() !== '') {
-      properties.company = input.company.trim();
-    }
-    if (input.website != null && input.website.trim() !== '') {
-      properties.website = input.website.trim();
-    }
+
     properties.lifecyclestage = 'lead';
-    if (input.onboarding_stage) {
-      properties.onboarding_stage =
-        ONBOARDING_STAGE_TO_HUBSPOT[input.onboarding_stage];
-      properties.last_onboarding_activity_at = String(
-        toHubSpotDateAtMidnightUtc(),
-      );
-    }
+    properties.last_onboarding_activity_at = String(
+      toHubSpotDateAtMidnightUtc(),
+    );
 
     const body = {
       inputs: [
@@ -201,14 +140,7 @@ export class HubSpotService {
     const body: Record<string, string> = {};
     for (const [k, v] of Object.entries(properties)) {
       if (v === undefined || v === null) continue;
-      if (
-        k === 'onboarding_stage' &&
-        typeof v === 'string' &&
-        v in ONBOARDING_STAGE_TO_HUBSPOT
-      ) {
-        body[k] = ONBOARDING_STAGE_TO_HUBSPOT[v as OnboardingStage];
-        continue;
-      }
+
       if (
         k === 'last_onboarding_activity_at' ||
         k === 'last_conversation_at' ||

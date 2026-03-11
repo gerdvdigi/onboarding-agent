@@ -16,14 +16,13 @@ import type { Request, Response } from 'express';
 import { OnboardingAgentService } from './onboarding-agent.service';
 import { ChatRequestDto } from '../common/dto/chat.dto';
 import {
-  OnboardingSessionGuard,
+  ClerkSessionGuard,
   getOnboardingSessionFromRequest,
-} from '../onboarding-session/onboarding-session.guard';
+} from '../onboarding-session/clerk-session.guard';
 import { OnboardingSessionService } from '../onboarding-session/onboarding-session.service';
 import { ConversationRepository } from '../onboarding-session/conversation.repository';
 import {
-  HubSpotService,
-  isStageBeyondDiscovery,
+  HubSpotService
 } from '../hubspot/hubspot.service';
 import { formatNoteDiscoveryStarted } from '../hubspot/hubspot-note-format';
 import { getDiscoveryProgress } from '../hubspot/discovery-progress';
@@ -31,7 +30,7 @@ import { deriveAnswersFromHistory } from '../langchain/utils/derive-answers-from
 import { ChatMessageRepository } from './chat-message.repository';
 
 @Controller('chat')
-@UseGuards(OnboardingSessionGuard)
+@UseGuards(ClerkSessionGuard)
 export class ChatController {
   constructor(
     private readonly onboardingAgentService: OnboardingAgentService,
@@ -105,15 +104,7 @@ export class ChatController {
       );
 
       const now = new Date().toISOString();
-      const setDiscoveryStarted = !isStageBeyondDiscovery(
-        session.onboardingStage,
-      );
-      if (setDiscoveryStarted) {
-        await this.sessionService.updateOnboardingStage(
-          session.id,
-          'discovery_started',
-        );
-      }
+
       const derived = deriveAnswersFromHistory(
         messages.map((m) => ({ role: m.role, content: m.content })),
       );
@@ -146,14 +137,9 @@ export class ChatController {
         last_onboarding_activity_at: now,
         last_conversation_at: now,
         conversations_count: conversationsCount,
-        ...(setDiscoveryStarted
-          ? { onboarding_stage: 'discovery_started' }
-          : {}),
       });
-      if (setDiscoveryStarted) {
         const noteBody = formatNoteDiscoveryStarted({
           conversationTitle: conv.title,
-          website: userInfo.website?.trim() || undefined,
           hubs: hubsStr,
           answersCollected:
             Object.keys(mergedAnswers).length > 0 ? mergedAnswers : undefined,
@@ -175,7 +161,6 @@ export class ChatController {
             );
           }
         }
-      }
 
       // Configurar headers para SSE (CORS lo maneja main.ts; no sobrescribir Access-Control-Allow-Origin)
       res.setHeader('Content-Type', 'text/event-stream');

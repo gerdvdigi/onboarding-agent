@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@clerk/ui/themes/shadcn.css";
 
 /* Digifianz palette: titles #02345b, primary #ee5e60, success green #289888 */
 :root {

@@ -5,20 +5,11 @@ import {
     timestamp,
     integer,
     jsonb,
-    uniqueIndex,
     index,
   } from "drizzle-orm/pg-core";
   
-  // Tipado TS (no crea nada en DB, solo te protege en el código)
-  export const ONBOARDING_SESSION_STATUSES = [
-    "invited",
-    "active",
-    "revoked",
-    "expired",
-  ] as const;
-  
-  export type OnboardingSessionStatus =
-    (typeof ONBOARDING_SESSION_STATUSES)[number];
+
+
   
   export const onboardingSessions = pgTable(
     "onboarding_sessions",
@@ -27,21 +18,8 @@ import {
 
       email: text("email").notNull(),
 
-      /** From step-1 form; used to hydrate userInfo when opening magic link on different device. */
       firstName: text("first_name"),
       lastName: text("last_name"),
-
-      /** Company and website from step-1 form; used to block duplicate submissions. */
-      company: text("company"),
-      website: text("website"),
-
-      // En DB es TEXT + CHECK, así que acá también es TEXT
-      status: text("status").notNull().default("invited"),
-
-      /** Onboarding stage: form_sent | magic_link_used | discovery_started | plan_approved | pdf_downloaded. Fuente de verdad para guards de step. */
-      onboardingStage: text("onboarding_stage"),
-
-      tokenHash: text("token_hash").notNull(),
 
       expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 
@@ -55,17 +33,14 @@ import {
       ipLastUsed: text("ip_last_used"),
 
       maxRequestsPerMin: integer("max_requests_per_min").notNull().default(60),
+
+      /** Clerk user ID for sessions created via Clerk sign-in/sign-up. Índice único parcial en migración 002 evita duplicados. */
+      clerkUserId: text("clerk_user_id"),
     },
     (t) => ({
-      tokenHashUq: uniqueIndex("onboarding_sessions_token_hash_uq").on(t.tokenHash),
+      clerkUserIdIdx: index("onboarding_sessions_clerk_user_id_idx").on(t.clerkUserId),
       emailIdx: index("onboarding_sessions_email_idx").on(t.email),
       expiresAtIdx: index("onboarding_sessions_expires_at_idx").on(t.expiresAt),
-      emailStatusIdx: index("onboarding_sessions_email_status_idx").on(t.email, t.status),
-      emailCompanyWebsiteIdx: index("onboarding_sessions_email_company_website_idx").on(
-        t.email,
-        t.company,
-        t.website,
-      ),
     })
   );
 
