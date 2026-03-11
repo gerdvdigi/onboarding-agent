@@ -13,15 +13,15 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
-  OnboardingSessionGuard,
+  ClerkSessionGuard,
   getOnboardingSessionFromRequest,
-} from './onboarding-session.guard';
+} from './clerk-session.guard';
 import { ConversationRepository } from './conversation.repository';
 import { HubSpotService } from '../hubspot/hubspot.service';
 import { formatNoteCreated } from '../hubspot/hubspot-note-format';
 
 @Controller('onboarding/conversations')
-@UseGuards(OnboardingSessionGuard)
+@UseGuards(ClerkSessionGuard)
 export class ConversationsController {
   constructor(
     private readonly conversationRepo: ConversationRepository,
@@ -37,7 +37,32 @@ export class ConversationsController {
         id: r.id,
         title: r.title,
         createdAt: r.createdAt,
+        stage: r.pdfUrl
+          ? 'pdf_downloaded'
+          : r.planSnapshot
+            ? 'plan_approved'
+            : 'discovery',
       })),
+    };
+  }
+
+  @Get(':id')
+  async getOne(@Req() req: Request, @Param('id') id: string) {
+    const session = getOnboardingSessionFromRequest(req);
+    const conv = await this.conversationRepo.findByIdAndSession(id, session.id);
+    if (!conv) {
+      throw new NotFoundException('Conversation not found');
+    }
+    const stage = conv.pdfUrl
+      ? 'pdf_downloaded'
+      : conv.planSnapshot
+        ? 'plan_approved'
+        : 'discovery';
+    return {
+      id: conv.id,
+      title: conv.title,
+      createdAt: conv.createdAt,
+      stage,
     };
   }
 

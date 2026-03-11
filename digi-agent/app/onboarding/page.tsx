@@ -1,10 +1,5 @@
-import { Suspense } from "react";
-import { OnboardingLanding } from "@/components/onboarding/OnboardingLanding";
+import { redirect } from 'next/navigation';
 
 export default function OnboardingPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      <OnboardingLanding />
-    </Suspense>
-  );
+  redirect('/onboarding/dashboard');
 }

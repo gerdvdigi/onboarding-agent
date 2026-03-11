@@ -29,7 +29,7 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Onboarding-Session', 'X-Onboarding-Session-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Habilitar validación global de DTOs

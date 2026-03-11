@@ -53,29 +53,36 @@ function noteHeader(
   conversationTitle: string,
   statusLabel: string,
   website?: string,
+  company?: string,
 ): string {
   const websiteLine =
     website && website.trim()
       ? `<br><strong>Website:</strong> ${escapeHtml(website.trim())}`
       : '';
+  const companyLine =
+    company && company.trim()
+      ? `<br><strong>Company:</strong> ${escapeHtml(company.trim())}`
+      : '';
   return `<p><strong>[Onboarding] Conversation:</strong> "${escapeHtml(conversationTitle)}"</p>
 <p><strong>${escapeHtml(statusLabel)}</strong></p>
 <p><strong>Date:</strong> ${new Date().toISOString().slice(0, 10)}<br>
-<strong>Time:</strong> ${new Date().toISOString().slice(11, 19)} UTC${websiteLine}</p>`;
+<strong>Time:</strong> ${new Date().toISOString().slice(11, 19)} UTC${websiteLine}${companyLine}</p>`;
 }
 
 /** Note: Conversation Created */
 export function formatNoteCreated(
   conversationTitle: string,
   website?: string,
+  company?: string,
 ): string {
-  return noteHeader(conversationTitle, 'STATUS: Created', website);
+  return noteHeader(conversationTitle, 'STATUS: Created', website, company);
 }
 
 /** Note: Discovery Started */
 export function formatNoteDiscoveryStarted(params: {
   conversationTitle: string;
   website?: string;
+  company?: string;
   hubs?: string;
   answersCollected?: Record<string, string>;
   discoveryPercentage?: number;
@@ -83,17 +90,10 @@ export function formatNoteDiscoveryStarted(params: {
 }): string {
   const {
     conversationTitle,
-    website,
-    hubs,
-    answersCollected,
-    discoveryPercentage,
-    messages,
-  } = params;
-  const header = noteHeader(
-    conversationTitle,
-    'STATUS: Discovery Started',
-    website,
-  );
+    website,  
+    company,
+    hubs, answersCollected, discoveryPercentage, messages } = params;
+  const header = noteHeader(conversationTitle, 'STATUS: Discovery Started', website, company);
   const body = `<p>The user has begun the AI-powered discovery chat to define their HubSpot implementation needs.</p>`;
   const extras: string[] = [];
   if (hubs && hubs.trim()) {
@@ -123,6 +123,7 @@ export function formatNoteDiscoveryStarted(params: {
 export function formatNotePlanApproved(params: {
   conversationTitle: string;
   website?: string;
+  company?: string;
   hubs: string;
   hubTypes?: string;
   timeline?: string;
@@ -136,6 +137,7 @@ export function formatNotePlanApproved(params: {
   const {
     conversationTitle,
     website,
+    company,
     hubs,
     hubTypes,
     timeline,
@@ -149,6 +151,7 @@ export function formatNotePlanApproved(params: {
     conversationTitle,
     'STATUS: Plan Approved',
     website,
+    company,
   );
   const planSection = `<p><strong>Implementation Plan</strong></p>
 <ul>
@@ -186,19 +189,20 @@ ${discoveryPercentage !== undefined && !Number.isNaN(discoveryPercentage) ? `<li
 /** Note: PDF Downloaded */
 export function formatNotePdfDownloaded(params: {
   conversationTitle: string;
-  company: string;
   website?: string;
+  company?: string;
   hubs?: string;
   pdfUrl?: string;
   messages?: Array<{ role: string; content: string }>;
 }): string {
-  const { conversationTitle, company, website, hubs, pdfUrl, messages } = params;
+  const { conversationTitle, website, company, hubs, pdfUrl, messages } = params;
   const header = noteHeader(
     conversationTitle,
     'STATUS: PDF Downloaded',
     website,
+    company,
   );
-  const body = `<p>The Implementation Plan PDF for <strong>"${escapeHtml(company)}"</strong> has been successfully downloaded.</p>`;
+  const body = company && company.trim() ? `<p>The Implementation Plan PDF for <strong>"${escapeHtml(company.trim())}"</strong> has been successfully downloaded.</p>` : '';
   const hubsLine =
     hubs && hubs.trim()
       ? `<p><strong>Hubs:</strong> ${escapeHtml(hubs.trim())}</p>`

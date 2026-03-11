@@ -1,9 +1,9 @@
 /**
  * Server-side fetch for onboarding session.
- * Forwards cookies from the incoming request to the backend.
- * En cross-domain: extrae onboarding_session_id (cookie del frontend) y la envía como header.
+ * Usa el token de Clerk para autenticación.
  */
 
+import { auth } from '@clerk/nextjs/server';
 import type { UserInfo } from '@/lib/langchain/agent';
 
 export interface SessionMeResponse {
@@ -12,26 +12,23 @@ export interface SessionMeResponse {
   onboardingStage?: string;
 }
 
-import { parseSessionIdFromCookie, buildSessionHeaders } from './session-headers';
-
-export async function fetchSessionMe(
-  cookieHeader: string | null
-): Promise<SessionMeResponse> {
+export async function fetchSessionMe(): Promise<SessionMeResponse> {
   const baseUrl =
     process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:3001';
   const url = baseUrl.replace(/\/$/, '') + '/onboarding/session/me';
 
   try {
-    const headers: HeadersInit = {
-      'Cache-Control': 'no-store',
-      ...buildSessionHeaders(cookieHeader),
-    };
-    if (!parseSessionIdFromCookie(cookieHeader) && cookieHeader) {
-      headers['cookie'] = cookieHeader;
+    const { getToken } = await auth();
+    const token = await getToken();
+    if (!token) {
+      return { ok: false };
     }
 
     const res = await fetch(url, {
-      headers,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Cache-Control': 'no-store',
+      },
       cache: 'no-store',
     });
 

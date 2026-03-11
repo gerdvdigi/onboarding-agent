@@ -3,7 +3,6 @@
  * Redirects if session is invalid or stage-based redirect applies.
  */
 
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { fetchSessionMe } from '@/lib/api/session-me';
 import type { UserInfo } from '@/lib/langchain/agent';
@@ -29,12 +28,10 @@ export interface ValidateOptions {
 export async function validateOnboardingSession(
   options: ValidateOptions = {}
 ): Promise<ValidatedSession> {
-  const headersList = await headers();
-  const cookie = headersList.get('cookie');
-  const session = await fetchSessionMe(cookie);
+  const session = await fetchSessionMe();
 
   if (!session.ok || !session.userInfo) {
-    redirect('/onboarding/step-1');
+    redirect('/');
   }
 
   const stageBeyond =

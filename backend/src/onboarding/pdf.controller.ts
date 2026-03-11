@@ -16,9 +16,9 @@ const pdfmake = require('pdfmake');
 import { GeneratePdfRequestDto } from '../common/dto/pdf.dto';
 import { normalizeMarkdown } from '../common/utils/normalize-markdown';
 import {
-  OnboardingSessionGuard,
+  ClerkSessionGuard,
   getOnboardingSessionFromRequest,
-} from '../onboarding-session/onboarding-session.guard';
+} from '../onboarding-session/clerk-session.guard';
 import { OnboardingSessionService } from '../onboarding-session/onboarding-session.service';
 import { ConversationRepository } from '../onboarding-session/conversation.repository';
 import { ChatMessageRepository } from './chat-message.repository';
@@ -43,7 +43,7 @@ type PdfContent =
   | (Record<string, unknown> | string)[];
 
 @Controller('generate-pdf')
-@UseGuards(OnboardingSessionGuard)
+@UseGuards(ClerkSessionGuard)
 export class PdfController {
   constructor(
     private readonly hubSpotService: HubSpotService,
@@ -103,14 +103,9 @@ export class PdfController {
         `attachment; filename="implementation-plan-${userInfo.company}.pdf"`,
       );
       res.send(pdfBuffer);
-      await this.sessionService.updateOnboardingStage(
-        session.id,
-        'pdf_downloaded',
-      );
       const now = new Date().toISOString();
       await this.hubSpotService.updateContactProperties(userInfo.email, {
         pdf_generated_at: now,
-        onboarding_stage: 'pdf_downloaded',
         last_onboarding_activity_at: now,
       });
       const conv =
@@ -121,7 +116,6 @@ export class PdfController {
             )
           : null;
       const conversationTitle = conv?.title ?? 'N/A';
-      const company = userInfo.company ?? 'N/A';
       const hubSales =
         plan.hub_sales ??
         plan.modules?.some((m) => /sales/i.test(m.name)) ??
@@ -149,8 +143,6 @@ export class PdfController {
           : undefined;
       const noteBody = formatNotePdfDownloaded({
         conversationTitle,
-        company,
-        website: userInfo.website?.trim() || undefined,
         hubs: hubs || undefined,
         pdfUrl: pdfUrl || undefined,
         messages,

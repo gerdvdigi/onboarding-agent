@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { Plus, Trash2, MessageSquare, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { getApiBaseUrl, defaultFetchOptions } from "@/lib/config/api";
+import { getApiBaseUrl, getAuthFetchOptions } from "@/lib/config/api";
 
 interface Conversation {
   id: string;
@@ -32,6 +33,7 @@ export function ConversationsDashboard({
   initialConversations,
 }: ConversationsDashboardProps) {
   const router = useRouter();
+  const { getToken } = useAuth();
   const hasInitialData = initialConversations !== undefined;
   const [conversations, setConversations] = useState<Conversation[]>(
     initialConversations ?? []
@@ -46,8 +48,9 @@ export function ConversationsDashboard({
 
   const fetchConversations = useCallback(async () => {
     try {
+      const opts = await getAuthFetchOptions(getToken);
       const res = await fetch(`${getApiBaseUrl()}/onboarding/conversations`, {
-        ...defaultFetchOptions,
+        ...opts,
       });
       if (res.ok) {
         const data = await res.json();
@@ -62,7 +65,7 @@ export function ConversationsDashboard({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   useEffect(() => {
     if (hasInitialData) {
@@ -85,10 +88,14 @@ export function ConversationsDashboard({
   const handleCreate = async () => {
     setCreating(true);
     try {
+      const opts = await getAuthFetchOptions(getToken);
       const res = await fetch(`${getApiBaseUrl()}/onboarding/conversations`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        ...defaultFetchOptions,
+        ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.headers as Record<string, string>),
+        },
         body: JSON.stringify({
           title: newConversationName.trim() || undefined,
         }),
@@ -123,11 +130,12 @@ export function ConversationsDashboard({
     const id = conversationToDelete.id;
     setDeletingId(id);
     try {
+      const opts = await getAuthFetchOptions(getToken);
       const res = await fetch(
         `${getApiBaseUrl()}/onboarding/conversations/${id}`,
         {
           method: "DELETE",
-          ...defaultFetchOptions,
+          ...opts,
         }
       );
       if (res.ok) {

@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOnboardingStore } from "@/lib/store/onboarding-store";
-import { getApiBaseUrl, defaultFetchOptions } from "@/lib/config/api";
+import { getApiBaseUrl, getAuthFetchOptions } from "@/lib/config/api";
 import type { ImplementationPlan } from "@/lib/langchain/agent";
 
 import { deriveContextFromMessages } from "@/lib/utils/derive-context-from-messages";
@@ -21,6 +22,7 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const router = useRouter();
+  const { getToken } = useAuth();
   const { messages, addMessage, setMessages, userInfo, updateContext } =
     useOnboardingStore();
   const [input, setInput] = useState("");
@@ -70,8 +72,10 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     setMessages([]);
     let cancelled = false;
     const url = `${getApiBaseUrl()}/chat/messages?conversationId=${encodeURIComponent(conversationId)}`;
-    fetch(url, { ...defaultFetchOptions })
+    getAuthFetchOptions(getToken)
+      .then((opts) => fetch(url, { ...opts }))
       .then((res) => {
+        if (cancelled) return null;
         if (res.status === 404) {
           router.replace("/onboarding/dashboard");
           return null;
@@ -96,7 +100,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, setMessages, router]);
+  }, [conversationId, setMessages, router, getToken]);
 
   // Initial agent message - once when there are no messages (after load from DB)
   useEffect(() => {
@@ -145,8 +149,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     const { messages: updatedMessages, context: ctx, userInfo: u } = state;
 
     if (!u) {
-      console.warn("[Chat] userInfo is required; complete step 1 first.");
-      throw new Error("Please complete step 1 (basic info) before chatting.");
+      console.warn("[Chat] userInfo is required.");
+      throw new Error("Session not loaded. Please refresh the page.");
     }
 
     // Send full conversation so the backend knows what was already asked and answered
@@ -183,10 +187,14 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     finalStreamingContentRef.current = "";
 
     try {
+      const opts = await getAuthFetchOptions(getToken);
       const response = await fetch(`${getApiBaseUrl()}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.headers as Record<string, string>),
+        },
         body: JSON.stringify({
           conversationId,
           messages: messagesToSend,
@@ -340,7 +348,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     if (!userInfo) {
       addMessage(
         "assistant",
-        "Please complete step 1 (basic info) before chatting."
+        "Session not loaded. Please refresh the page."
       );
       return;
     }
@@ -404,10 +412,14 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     );
     const fullPlanText = (planMessage?.content ?? assistantMessages.at(-1)?.content ?? "").trim() || null;
     try {
+      const opts = await getAuthFetchOptions(getToken);
       await fetch(`${getApiBaseUrl()}/onboarding/plan-approved`, {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.headers as Record<string, string>),
+        },
         body: JSON.stringify({
           plan: planDraft,
           conversationId,
