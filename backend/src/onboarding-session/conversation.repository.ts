@@ -129,8 +129,11 @@ export class ConversationRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.db
+    console.log('[Supabase/ConversationRepository] Eliminando conversación:', id);
+    const result = await this.db
       .delete(onboardingConversations)
-      .where(eq(onboardingConversations.id, id));
+      .where(eq(onboardingConversations.id, id))
+      .returning({ id: onboardingConversations.id });
+    console.log('[Supabase/ConversationRepository] Conversación eliminada:', result?.length ? 'OK' : 'sin filas afectadas', id);
   }
 }

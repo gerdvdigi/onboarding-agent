@@ -93,6 +93,16 @@ body {
   border-color: hsl(var(--border));
 }
 
+/* Clerk forms: fondo visible para card e inputs (evita transparencia sobre blanco) */
+.cl-signIn-root,
+.cl-signUp-root {
+  --clerk-color-background: hsl(220 14% 98%);
+  --clerk-color-input: hsl(220 14% 96%);
+}
+.cl-formFieldInput {
+  background-color: hsl(220 14% 96%) !important;
+}
+
 /* Typing indicator: staggered bounce for chat dots */
 @keyframes typing-bounce {
   0%, 60%, 100% {

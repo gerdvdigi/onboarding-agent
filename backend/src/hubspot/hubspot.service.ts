@@ -299,6 +299,45 @@ export class HubSpotService {
   }
 
   /**
+   * Archiva (mueve a papelera) una Note en HubSpot.
+   * No lanza si no hay token o HubSpot falla.
+   * Requiere scope crm.objects.notes.write en la Private App.
+   */
+  async deleteNote(noteId: string): Promise<void> {
+    const token = this.getAccessToken();
+    if (!token) {
+      console.log('[HubSpot deleteNote] HUBSPOT_ACCESS_TOKEN no configurado, omitiendo eliminación');
+      this.logger.debug(
+        'HUBSPOT_ACCESS_TOKEN not set; skipping HubSpot note delete',
+      );
+      return;
+    }
+    const url = `${HUBSPOT_API_BASE}/crm/v3/objects/notes/${encodeURIComponent(noteId)}`;
+    try {
+      console.log('[HubSpot deleteNote] Enviando DELETE a HubSpot:', noteId);
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.log('[HubSpot deleteNote] Error al eliminar:', res.status, text);
+        this.logger.warn(
+          `HubSpot note delete failed (${res.status}): ${text}`,
+        );
+        return;
+      }
+      console.log('[HubSpot deleteNote] Nota eliminada correctamente en HubSpot:', noteId);
+      this.logger.log(`HubSpot note deleted: ${noteId}`);
+    } catch (err) {
+      console.log('[HubSpot deleteNote] Excepción:', err instanceof Error ? err.message : String(err));
+      this.logger.warn(
+        `HubSpot note delete error for ${noteId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Busca un contacto en HubSpot por email (para verificar que se creó).
    * Requiere scope crm.objects.contacts.read en la Private App.
    * @returns El contacto con sus properties o null si no existe / no hay token / error
