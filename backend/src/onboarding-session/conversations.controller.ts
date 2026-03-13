@@ -101,6 +101,22 @@ export class ConversationsController {
     if (!conv) {
       throw new NotFoundException('Conversation not found');
     }
+    const hubspotNoteId = conv.hubspotNoteId;
+    if (hubspotNoteId) {
+      console.log('[DELETE] Eliminando nota en HubSpot:', { conversationId: id, hubspotNoteId });
+      await this.hubSpotService.deleteNote(hubspotNoteId);
+      console.log('[DELETE] Llamada a deleteNote HubSpot completada:', hubspotNoteId);
+    } else {
+      console.log('[DELETE] No hay hubspotNoteId para esta conversación, omitiendo HubSpot:', id);
+    }
+    console.log('[DELETE] Eliminando conversación en Supabase:', { conversationId: id });
     await this.conversationRepo.delete(id);
+    console.log('[DELETE] Conversación eliminada en Supabase:', id);
+    const conversationsCount = await this.conversationRepo.countBySessionId(
+      session.id,
+    );
+    await this.hubSpotService.updateContactProperties(session.email, {
+      conversations_count: conversationsCount,
+    });
   }
 }

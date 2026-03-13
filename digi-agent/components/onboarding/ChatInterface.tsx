@@ -153,6 +153,13 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       throw new Error("Session not loaded. Please refresh the page.");
     }
 
+    // Ensure company and website are strings (backend validation requires them)
+    const normalizedUserInfo = {
+      ...u,
+      company: typeof u.company === 'string' ? u.company : '',
+      website: typeof u.website === 'string' ? u.website : '',
+    };
+
     // Send full conversation so the backend knows what was already asked and answered
     const seenMessages = new Set<string>();
     const messagesToSend = updatedMessages
@@ -198,7 +205,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         body: JSON.stringify({
           conversationId,
           messages: messagesToSend,
-          userInfo: u,
+          userInfo: normalizedUserInfo,
           context: contextToSend,
         }),
       });

@@ -43,6 +43,15 @@ export default function RootLayout({
           appearance={{
             theme: shadcn,
             captcha: { theme: 'auto', size: 'normal' },
+            variables: {
+              colorBackground: 'hsl(220 14% 98%)',
+              colorInput: 'hsl(220 14% 96%)',
+              colorBorder: 'hsl(220 13% 91%)',
+              colorPrimary: 'hsl(359 82% 65%)',
+              colorPrimaryForeground: 'hsl(0 0% 100%)',
+              colorForeground: 'hsl(220 15% 12%)',
+              colorMutedForeground: 'hsl(220 9% 46%)',
+            },
           }}
           signInUrl="/sign-in"
           signUpUrl="/sign-up"

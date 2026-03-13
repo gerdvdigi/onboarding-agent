@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { auth } from '@clerk/nextjs/server';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -9,7 +10,10 @@ import {
 } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const { userId } = await auth();
+  const isSignedIn = !!userId;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero */}
@@ -27,12 +31,20 @@ export default function LandingPage() {
               tailored to your needs. Guided answers in minutes.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
-              <Button asChild size="lg">
-                <Link href="/sign-up">Get started</Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/sign-in">Sign in</Link>
-              </Button>
+              {isSignedIn ? (
+                <Button asChild size="lg">
+                  <Link href="/onboarding/dashboard">Go to dashboard</Link>
+                </Button>
+              ) : (
+                <>
+                  <Button asChild size="lg">
+                    <Link href="/sign-up">Get started</Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link href="/sign-in">Sign in</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -309,10 +321,10 @@ export default function LandingPage() {
                 </li>
                 <li>
                   <Link
-                    href="/sign-up"
+                    href={isSignedIn ? '/onboarding/dashboard' : '/sign-up'}
                     className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Get started
+                    {isSignedIn ? 'Go to dashboard' : 'Get started'}
                   </Link>
                 </li>
               </ul>
