@@ -9,4 +9,10 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  // Nueva ruta ultra ligera para UptimeRobot
+  @Get('health')
+  checkHealth() {
+    return { status: 'ok' };
+  }
 }
